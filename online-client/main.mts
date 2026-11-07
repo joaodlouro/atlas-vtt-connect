@@ -325,7 +325,7 @@ if (!target) {
       hostId: target.hostId,
       name,
       // One key per GM session, so different GMs cannot recognise or pose as the same player.
-      playerKey: playerKeyFor(target.hostId),
+      playerKey: playerKeyFor(target.hostId + (canEditMap ? ':map-editor' : '')),
       clientVersion: VERSION,
       transport: createPeerClient(target.server),
       onChange: render,
