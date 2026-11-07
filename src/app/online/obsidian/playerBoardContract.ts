@@ -9,11 +9,9 @@ import type { SceneCamera } from '../scene/sceneCamera';
 import type { PlayerScene, ScenePoint } from '../scene/sceneTypes';
 import type { PlayerPing } from '../tools/pings';
 import type { MapTemplate } from '../tools/templates';
-import type { ArPose } from '../tools/arViews';
 import type { SheetRollRef } from '../tools/sheets';
 import type { OfferedDiceRules, PhysicalRoll, PlayerLaser } from '../tools/toolMessages';
 import type { TemplateChange } from '../view/tools/PlayerTools';
-import type { MapSpell, SpellChange } from '../tools/spells';
 
 export interface PlayerBoardHost {
   /** An image of the scene (map, token, material map) as a URL the board can load; null while it is not here. */
@@ -24,10 +22,6 @@ export interface PlayerBoardHost {
   sendLaser(points: ScenePoint[], lifted: boolean, dt: number[], color?: string): boolean;
   sendPing(x: number, y: number): boolean;
   sendTemplate(change: TemplateChange): boolean;
-  /** Casts a spell through a token's eyes, takes one of the player's off, or all of theirs (a Tabletop with spells asks). */
-  sendSpell?(change: SpellChange): boolean;
-  /** The board left a token's eyes by itself (Escape, its Leave button): the eye button follows. */
-  eyeChanged?(): void;
   /** The player clicked a readable pin: its note is asked for and shown. */
   openPin(pinId: string): void;
   /** The token under the pointer (null for none), where the pointer is in client pixels, and whether Ctrl or Cmd is down. */
@@ -74,35 +68,7 @@ export interface PlayerBoardHandle {
   fitMap(): void;
   /** Moves the camera to a point of the map (an initiative card's click); absent from an older Tabletop. */
   lookAt?(x: number, y: number): void;
-  /** This board sees through a token's eyes (`seeFrom`); absent from an older Tabletop. */
-  readonly firstPerson?: true;
-  /**
-   * Sees through a token's eyes, the phone's gyroscope turning the view when `gyro` (the caller has the permission), a drag
-   * otherwise; null goes back to the usual camera. False for a token the board does not have.
-   */
-  seeFrom?(tokenId: string | null, gyro: boolean): boolean;
-  /** The token the view is seen through, or null. */
-  seeingFrom?(): string | null;
-  /** This board draws over a phone's camera picture (`setAugmented`); absent from an older Tabletop. */
-  readonly augmentedReality?: true;
-  /** Augmented reality: the phone camera's pose over the printed marker sheet for one frame; null: the usual camera. */
-  setAugmented?(view: AugmentedView | null): boolean;
-  /** This board draws into a WebXR immersive AR session (room tracking); absent from an older Tabletop. */
-  readonly roomAr?: true;
-  /** Room tracking: draws into the session; `onFrame` hears each XRFrame (and the local reference space) first. */
-  startRoomAr?(session: unknown, onFrame: ((frame: unknown, space: unknown) => void) | null): Promise<boolean>;
-  /** Room tracking: stands the board at a point of the room (`RoomPlace`); null hides it. */
-  placeRoomAr?(place: RoomPlace | null): void;
-  /** Ends room tracking. */
-  stopRoomAr?(): void;
-  /** Room tracking's frame times (milliseconds) and errors, for a look; null when it is off. */
-  roomStats?(): { frames: number; intervalMs: number; workMs: number; errors: number; lastError: string } | null;
-  /** In augmented reality: where the phone's camera is over the map (board units) and which way it looks; null otherwise. */
-  arViewer?(): ArPose | null;
   receiveTemplates(sceneId: string, templates: readonly MapTemplate[]): void;
-  /** This board casts and draws spells (an older Tabletop's does not). */
-  readonly spells?: true;
-  receiveSpells?(sceneId: string, spells: readonly MapSpell[]): void;
   receivePing(ping: PlayerPing): void;
   receiveLaser(laser: PlayerLaser): void;
   /** Images or models arrived or went. */
@@ -146,31 +112,4 @@ export interface PlayerBoardFactory {
 export function asPlayerBoardFactory(value: unknown): PlayerBoardFactory | null {
   const factory = value as Partial<PlayerBoardFactory> | null;
   return typeof factory === 'object' && factory !== null && factory.version === 1 && typeof factory.create === 'function' ? factory as PlayerBoardFactory : null;
-}
-
-/**
- * The phone camera over the printed marker sheet, for Tabletop's board (its `AugmentedView`): the turn (row by row) and
- * place (millimetres) taking sheet points to the camera's (x right, y down the picture, z ahead); the picture's edges as
- * tangents from the camera; how long a square of the map is on the table; the token standing on the sheet's middle
- * (null: the map's middle).
- */
-export interface AugmentedView {
-  readonly rotation: readonly number[];
-  readonly translation: readonly number[];
-  readonly frustum: { readonly left: number; readonly right: number; readonly top: number; readonly bottom: number };
-  readonly squareMm: number;
-  readonly anchor: string | null;
-  /** The map point (map units) the sheet's origin lies on, in place of `anchor` (a table the GM placed: its origin is the map's top left). */
-  readonly origin?: { readonly x: number; readonly y: number };
-  /** The camera's picture the pose was found for, drawn behind the board (absent: the page shows the picture itself). */
-  readonly background?: HTMLCanvasElement;
-}
-
-/** Room tracking: where the board stands, in the room's metres (WebXR's local space, y up); see Tabletop's `RoomPlace`. */
-export interface RoomPlace {
-  readonly position: readonly number[];
-  /** Which way the map's up faces, as a turn about the room's up from its −z (radians). */
-  readonly yaw: number;
-  readonly squareMm: number;
-  readonly anchor: string | null;
 }

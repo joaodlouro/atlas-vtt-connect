@@ -52,6 +52,23 @@ function withToken(t: ReturnType<typeof setup>): void {
 }
 
 describe('MapView', () => {
+  it('copies only a selected controlled token, preserves text shortcuts, and clears on scene changes', () => {
+    const sendCopy = vi.fn(() => true);
+    const t = setup({ sendCopy });
+    withToken(t);
+    t.canvas.dispatchEvent(new MouseEvent('click', { clientX: 116, clientY: 87, bubbles: true }));
+    const key = (name: string, target: EventTarget = document.body) => target.dispatchEvent(new KeyboardEvent('keydown', { key: name, ctrlKey: true, bubbles: true, cancelable: true }));
+    key('c'); key('v');
+    expect(sendCopy).toHaveBeenCalledWith('t1');
+    const input = document.createElement('input'); document.body.append(input);
+    key('v', input);
+    expect(sendCopy).toHaveBeenCalledTimes(1);
+    t.view.setControlled([]); key('v');
+    expect(sendCopy).toHaveBeenCalledTimes(1);
+    t.view.setControlled(['t1']); t.view.setScene(null); t.view.setScene(playerScene({ sceneId: 'other' })); key('v');
+    expect(sendCopy).toHaveBeenCalledTimes(1);
+    t.view.dispose(); input.remove();
+  });
   afterEach(() => vi.unstubAllGlobals());
 
   it('watches the pixel ratio once however often it measures, and stops on dispose', () => {
@@ -252,4 +269,16 @@ describe('MapView', () => {
     expect(t.view.toolState().tool).toBe('move');
     expect(t.canvas.dataset.tool).toBe('move');
   });
+});
+
+it('opens the right panel on a single click and clears it when switching scenes', () => {
+  const panel = document.createElement('section'); document.body.append(panel);
+  const selected = vi.fn(); const edit = vi.fn(() => true);
+  const t = setup({ tokenPanel: panel, onTokenSelected: selected, sendEdit: edit });
+  withToken(t);
+  t.canvas.dispatchEvent(new MouseEvent('click', { clientX: 116, clientY: 87, bubbles: true }));
+  expect(selected).toHaveBeenCalledOnce();
+  expect(panel.querySelector('input[aria-label="HP atual"]')).not.toBeNull();
+  expect(document.querySelector('dialog')).toBeNull();
+  t.view.setScene(null); expect(panel.hidden).toBe(true); t.view.dispose();
 });

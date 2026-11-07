@@ -1,3 +1,4 @@
+import { isTokenEdit, type TokenEdit } from '../../app/online/control/tokenEdits';
 /**
  * `tokens` on a stock Atlas VTT, which has no extension API: where a dropped token lands and moving tokens for
  * players, with the contract of the API (`TokensApi`).
@@ -15,6 +16,7 @@ import { movementWalls } from './ported/movementWalls';
 import { stopAtWalls } from './ported/wallCollision';
 import { wallList } from './ported/walls';
 import { objectsOnLevel } from '../stockLevels';
+import type { CopyableTokens } from '../../app/online/control/TokenCopyHandler';
 
 /** Farthest a position may be from the origin, so no arithmetic on it later can overflow. */
 const MAX_COORDINATE = 1e9;
@@ -41,6 +43,11 @@ interface TokenScene {
   levels?: unknown;
   viewedLevel?: unknown;
   dropTokens?: (positions: readonly TokenPlace[]) => void;
+  updateToken?: (id: string, changes: Record<string, unknown>) => void;
+  initiative?: { entries: { id: string; tokenId: string }[] };
+  updateInitiativeEntry?: (id: string, updates: Record<string, unknown>) => void;
+  addToInitiative?: (entry: Record<string, unknown>) => string;
+  addTokens?: (entries: Record<string, unknown>[]) => string[];
 }
 
 export interface TokenView {
@@ -125,11 +132,48 @@ function snapperOf(view: TokenView): ((point: Point, size: number) => Point) | n
   };
 }
 
-export function stockTokensApi(deps: StockTokensDeps): TokensApi {
+export function stockTokensApi(deps: StockTokensDeps): TokensApi & CopyableTokens {
   /** Whether the GM's drop snaps in this scene (the grid's `snapToGrid`, on unless switched off). */
   const snaps = (state: TokenScene): boolean => state.grid != null && (state.grid.snapToGrid ?? true);
 
   return Object.freeze({
+    edit: (viewId: string, tokenId: string, edit: TokenEdit): boolean => {
+      const state = deps.view(viewId)?.atlasStore.getState();
+      if (!isTokenEdit(edit) || !state || !state.mapLoaded || state.isMapLoading || state.remoteView != null || state.isDragging || !state.updateToken) return false;
+      const token = tokenOf(state, tokenId) as (Record<string, unknown> & { isHidden?: boolean }) | null;
+      if (!token || token.isHidden) return false;
+      const { hp, initiative, ...changes } = edit;
+      if (initiative !== undefined) {
+        const entry = state.initiative?.entries.find((candidate) => candidate.tokenId === tokenId);
+        if (entry) {
+          if (!state.updateInitiativeEntry) return false;
+          state.updateInitiativeEntry(entry.id, { initiative });
+        } else {
+          if (!state.addToInitiative || !state.updateInitiativeEntry) return false;
+          // Native add does not sort; updating a different seed applies its configured sorting.
+          const id = state.addToInitiative({ tokenId, name: typeof token.name === 'string' ? token.name : 'Personagem', imagePath: typeof token.imagePath === 'string' ? token.imagePath : '', initiative: initiative === 0 ? 1 : 0, initiativeModifier: 0, isNPC: token.isNPC === true });
+          state.updateInitiativeEntry(id, { initiative });
+        }
+      }
+      const updates: Record<string, unknown> = { ...changes };
+      if (hp) {
+        updates.resources = { ...(isObject(token.resources) ? token.resources : {}), hp: { ...hp } };
+        updates.overriddenMax = [...new Set([...(Array.isArray(token.overriddenMax) ? (token.overriddenMax as unknown[]).filter((key): key is string => typeof key === 'string') : []), 'hp'])];
+      }
+      if (Object.keys(updates).length) state.updateToken(tokenId, updates);
+      return true;
+    },
+    duplicate: (viewId: string, tokenId: string): string | null => {
+      const state = deps.view(viewId)?.atlasStore.getState();
+      if (!state || !state.mapLoaded || state.isMapLoading || state.remoteView != null || state.isDragging || !state.addTokens) return null;
+      const source = tokenOf(state, tokenId);
+      if (!source || source.isHidden || !isCoordinate(source.x) || !isCoordinate(source.y)) return null;
+      const copy: Record<string, unknown> = structuredClone(source);
+      delete copy.id;
+      delete copy.instanceNumber;
+      // Same position: duplicating cannot teleport a token through a wall or reveal another room.
+      return state.addTokens([copy])[0] ?? null;
+    },
     snapPoint: (viewId: string, point: Point, tokenSize: number): Readonly<Point> => {
       if (typeof point !== 'object' || point === null || !isFiniteNumber(point.x) || !isFiniteNumber(point.y)) {
         throw new Error('[Atlas VTT Connect] tokens.snapPoint: "point" must be { x, y } numbers.');

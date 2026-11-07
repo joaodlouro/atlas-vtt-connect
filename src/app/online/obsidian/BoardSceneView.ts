@@ -13,20 +13,17 @@ import { StatblockPreviewView } from '../../../../online-client/statblockPreview
 import type { DecodedImage } from '../assets/AssetLoader';
 import type { BoardCamera, BoardExtras } from '../scene/boardTypes';
 import type { SceneCamera } from '../scene/sceneCamera';
-import type { ArPose } from '../tools/arViews';
-import type { ArTable } from '../tools/arTable';
 import type { PlayerScene, ScenePoint } from '../scene/sceneTypes';
 import type { PinNoteAnswer } from '../tools/pinNotes';
 import type { PlayerPing } from '../tools/pings';
 import type { TokenSheet } from '../tools/sheets';
 import type { MapTemplate, TemplateShape } from '../tools/templates';
-import type { MapSpell, SpellChange } from '../tools/spells';
 import type { OfferedDiceRules, PhysicalRoll, PlayerLaser } from '../tools/toolMessages';
 import { conditionRows } from '../view/tokenHover';
 import type { MeasureChoice } from '../view/tools/MeasureTool';
 import type { PlayerTool, TemplateChange } from '../view/tools/PlayerTools';
 import { nextTurnOf, turnNotice, turnOf } from '../view/turns';
-import type { AugmentedView, PlayerBoardFactory, PlayerBoardHandle, PlayerDiceRequest, RoomPlace } from './playerBoardContract';
+import type { PlayerBoardFactory, PlayerBoardHandle, PlayerDiceRequest } from './playerBoardContract';
 import type { SceneViewport } from './sceneViewport';
 
 export interface BoardSceneViewOptions {
@@ -41,10 +38,6 @@ export interface BoardSceneViewOptions {
   sendLaser(points: ScenePoint[], lifted: boolean, dt: number[], color?: string, size?: number): boolean;
   sendPing(x: number, y: number): boolean;
   sendTemplate(change: TemplateChange): boolean;
-  /** Casts spells through a token's eyes; without it the board offers none. */
-  sendSpell?(change: SpellChange): boolean;
-  /** The board left a token's eyes by itself (Escape, Leave). */
-  onEyeChange?(): void;
   requestNote?(pinId: string): boolean;
   /** Sends dice thrown on the board to the GM; without it the board has no dice. */
   sendDiceResult?(result: PhysicalRoll): boolean;
@@ -89,8 +82,6 @@ export class BoardSceneView implements SceneViewport {
       sendLaser: (points, lifted, dt, color) => options.sendLaser(points, lifted, dt, color, this.laserSize),
       sendPing: (x, y) => options.sendPing(x, y),
       sendTemplate: (change) => options.sendTemplate(change),
-      ...(options.sendSpell ? { sendSpell: (change: SpellChange) => options.sendSpell?.(change) ?? false } : {}),
-      eyeChanged: () => options.onEyeChange?.(),
       openPin: (pinId) => this.openPin(pinId),
       hover: (tokenId, client, modifier) => this.hover(tokenId, client, modifier),
       toolsChanged: () => options.onToolsChange(),
@@ -117,15 +108,7 @@ export class BoardSceneView implements SceneViewport {
 
   /** Tabletop's board of the scene: walls, doors, lights, props and materials. */
   setExtras(extras: BoardExtras | null): void {
-    this.table = extras?.arTable ?? null;
     this.board.setExtras(extras);
-  }
-
-  private table: ArTable | null = null;
-
-  /** Where the marker sheets lie on the table, as the GM placed them on this map; null for none. */
-  arTable(): ArTable | null {
-    return this.table;
   }
 
   /** The GM's 3D view, for the GM view button. */
@@ -168,8 +151,6 @@ export class BoardSceneView implements SceneViewport {
   }
   setPlayers(order: readonly string[], self: string | null): void { this.board.setPlayers(order, self); }
   receiveTemplates(sceneId: string, templates: readonly MapTemplate[]): void { this.board.receiveTemplates(sceneId, templates); }
-  /** The scene's spells (a Tabletop without spells draws none). */
-  receiveSpells(sceneId: string, spells: readonly MapSpell[]): void { this.board.receiveSpells?.(sceneId, spells); }
   receivePing(ping: PlayerPing): void { this.board.receivePing(ping); }
   receiveLaser(laser: PlayerLaser): void { this.board.receiveLaser(laser); }
   measure(): void { this.board.measure(); }
@@ -177,61 +158,6 @@ export class BoardSceneView implements SceneViewport {
   toolState(): ToolState {
     const { tool, shape, templateShape, ownTemplates, laserColor } = this.board.toolState();
     return { tool, shape, templateShape: templateShape as TemplateShape, ownTemplates, laserColor, laserSize: this.laserSize };
-  }
-
-  /** Whether the board sees through a token's eyes (an older Tabletop's does not). */
-  get firstPerson(): boolean {
-    return this.board.firstPerson === true && typeof this.board.seeFrom === 'function';
-  }
-
-  /** Sees through a token's eyes (null: the usual camera again); false where the board cannot. */
-  seeFrom(tokenId: string | null, gyro: boolean): boolean {
-    return this.firstPerson && this.board.seeFrom?.(tokenId, gyro) === true;
-  }
-
-  /** The token the view is seen through, or null. */
-  seeingFrom(): string | null {
-    return this.board.seeingFrom?.() ?? null;
-  }
-
-  /** Whether the board draws over a phone's camera picture (an older Tabletop's does not). */
-  get augmentedReality(): boolean {
-    return this.board.augmentedReality === true && typeof this.board.setAugmented === 'function';
-  }
-
-  /** Draws the board from the phone camera's pose over the marker sheet (null: the usual camera); false where it cannot. */
-  setAugmented(view: AugmentedView | null): boolean {
-    return this.augmentedReality && this.board.setAugmented?.(view) === true;
-  }
-
-  /** Whether the board draws into a WebXR immersive AR session (an older Tabletop's does not). */
-  get roomAr(): boolean {
-    return this.board.roomAr === true && typeof this.board.startRoomAr === 'function';
-  }
-
-  /** Room tracking: draws the board into `session`; false where the board cannot. */
-  async startRoomAr(session: unknown, onFrame: ((frame: unknown, space: unknown) => void) | null): Promise<boolean> {
-    return this.roomAr && (await this.board.startRoomAr?.(session, onFrame)) === true;
-  }
-
-  /** Room tracking: stands the board at a point of the room; null hides it. */
-  placeRoomAr(place: RoomPlace | null): void {
-    this.board.placeRoomAr?.(place);
-  }
-
-  /** Ends room tracking. */
-  stopRoomAr(): void {
-    this.board.stopRoomAr?.();
-  }
-
-  /** Room tracking's frame times and errors; null when it is off (or from an older Tabletop). */
-  roomStats(): { frames: number; intervalMs: number; workMs: number; errors: number; lastError: string } | null {
-    return this.board.roomStats?.() ?? null;
-  }
-
-  /** In augmented reality: where the phone's camera is over the map, for the GM's eye; null otherwise (or an older Tabletop). */
-  arViewer(): ArPose | null {
-    return this.board.arViewer?.() ?? null;
   }
 
   /** Whether the board throws dice (an older Tabletop's has none). */

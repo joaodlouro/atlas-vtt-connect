@@ -61,7 +61,7 @@ describe('projectForPlayers', () => {
     const scene = projectForPlayers(withTokens({ hero: hero() }), context());
     expect(scene.tokens.hero).toEqual({
       x: 140, y: 140, size: 1, rotation: 0, layer: 0, image: expect.any(String), ring: '#3366ff',
-      conditions: [{ id: 'prone', value: null }], name: 'Anna', hp: null, stress: null,
+      conditionChoices: [], conditions: [{ id: 'prone', value: null }], name: 'Anna', hp: null, stress: null,
       resources: [{ color: '#22c55e', share: 0.7, spent: false, current: 7, max: 10 }, { color: '#a855f7', share: 0.33, spent: false, current: 2, max: 6 }], downed: false,
     });
     expect(scene.tokens.hero?.image).not.toContain('hero');
@@ -458,5 +458,21 @@ describe('the player view rules with a curtain', () => {
     expect(pickPlayerViewRules({ ...ALL_ON, curtain: false })).not.toHaveProperty('curtain');
     expect(samePlayerViewRules(pickPlayerViewRules({ ...ALL_ON, curtain: true }), pickPlayerViewRules(ALL_ON))).toBe(false);
     expect(samePlayerViewRules(pickPlayerViewRules(ALL_ON), pickPlayerViewRules({ ...ALL_ON, curtain: false }))).toBe(true);
+  });
+});
+
+
+describe('explicit token HP bar and status', () => {
+  it('broadcasts HP only when shown, suppresses duplicate collection bars, and never leaks hidden HP', () => {
+    const shown = hero({ showHpBar: true, statusText: 'Ferido' } as Partial<Character>);
+    const visible = projectForPlayers(withTokens({ hero: shown }), context());
+    expect(visible.tokens.hero).toMatchObject({ hp: { current: 7, max: 10 }, showHpBar: true, statusText: 'Ferido' });
+    expect(visible.tokens.hero?.resources).toHaveLength(1);
+    expect(isPlayerSceneBody(visible)).toBe(true);
+    const hidden = projectForPlayers(withTokens({ hero: hero({ showHpBar: false } as Partial<Character>) }), context());
+    expect(hidden.tokens.hero?.hp).toBeNull();
+    expect(hidden.tokens.hero?.resources).toHaveLength(1);
+    const legacy = projectForPlayers(withTokens({ hero: hero() }), context());
+    expect(legacy.tokens.hero?.resources).toHaveLength(2);
   });
 });

@@ -345,12 +345,14 @@ function projectToken(token: TokenEntity, id: string, context: ProjectionContext
   const revealed = (at: { x: number; y: number; size: number }, cell: number): boolean => context.coverage.revealsSome(tokenBounds(at, cell), context.mapSize);
   const wire = { x: finiteOr(x, 0, SCENE_RANGES.coordinate), y: finiteOr(y, 0, SCENE_RANGES.coordinate), size: finiteOr(size, 1, SCENE_RANGES.tokenSize) };
   if (!revealed({ x, y, size }, cellSize) || !revealed(wire, wireCell)) return null;
+  const edits = token as TokenEntity & { showHpBar?: boolean; statusText?: string };
   const character = token.kind === 'character' ? token : null;
   const { rules } = context;
   const definitions = context.resources ?? NO_RESOURCES;
   const showOf = character ? (context.resourceShows ?? COLLECTION_SHOWS)(id, character) : null;
+  const visibleDefinitions = edits.showHpBar === undefined ? definitions : definitions.filter((definition) => definition.key !== 'hp');
   // Sent only when there are some, so a scene without wheels is what an older GM sent.
-  const wheels = character && showOf ? projectWheels(character, definitions, showOf) : [];
+  const wheels = character && showOf ? projectWheels(character, visibleDefinitions, showOf) : [];
   return {
     x: wire.x,
     y: wire.y,
@@ -360,11 +362,15 @@ function projectToken(token: TokenEntity, id: string, context: ProjectionContext
     image: context.assets.idFor(token.imagePath),
     ring: token.showRing === false ? null : textOr(token.ringColor, DEFAULT_RING),
     conditions: character ? projectConditions(token, context.conditions ?? []) : [],
+    conditionChoices: character ? projectConditions({ ...token, conditions: (context.conditions ?? []).map((entry) => entry.id) }, context.conditions ?? []) : [],
     name: character && rules.showTokenNameplates ? displayName(character) : null,
-    // Atlas 0.5 replaced HP and stress with the collection's resources; the old fields stay null for older players.
-    hp: null,
+    // Explicit HP bars use the legacy bounded value shape; collection bars retain their existing defaults.
+    hp: edits.showHpBar === true && token.resources?.hp
+      ? { current: finiteOr(token.resources.hp.current, 0, SCENE_RANGES.resourceValue), max: finiteOr(token.resources.hp.max, 0, SCENE_RANGES.resourceValue) } : null,
+    ...(edits.showHpBar !== undefined ? { showHpBar: edits.showHpBar } : {}),
+    ...(edits.statusText ? { statusText: edits.statusText.slice(0, 120) } : {}),
     stress: null,
-    resources: character && showOf ? projectBars(character, definitions, showOf) : [],
+    resources: character && showOf ? projectBars(character, visibleDefinitions, showOf) : [],
     ...(wheels.length > 0 ? { wheels } : {}),
     downed: isDowned(token, definitions),
     ...projectMini(context.minis?.[id], context),

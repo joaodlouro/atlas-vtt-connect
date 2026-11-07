@@ -4,8 +4,6 @@
  * Sent only to players who asked (`board-request`). Shared with the web player page, so this file imports nothing.
  * Heights are in grid squares, as Tabletop keeps them; null is the board's default (the fog's height).
  */
-import type { ArTable } from '../tools/arTable';
-
 export interface BoardPoint { x: number; y: number }
 
 export interface BoardDoor {
@@ -29,14 +27,10 @@ export interface BoardWallRecord {
   /** A material of `BoardExtras.materials`, or null for the plain wall. */
   material: string | null;
   door?: BoardDoor;
-  /** Atlas's one-way side, a wall that stops only sight (a curtain), only light (glass) or only tokens (a window), and a limited one. */
+  /** Atlas's one-way side, a wall that stops only sight (a curtain) or only light (glass), and a limited one. */
   direction?: 'left' | 'right';
-  blocks?: 'sight' | 'light' | 'movement';
+  blocks?: 'sight' | 'light';
   limited?: boolean;
-  /** A window's opening on Tabletop's board (grid squares from the floor), where the GM set it. */
-  window?: { bottom: number; top: number };
-  /** The wall's own width (thickness) on Tabletop's board, in grid squares, where the GM set one. */
-  width?: number;
 }
 
 export interface BoardLightRecord {
@@ -75,8 +69,7 @@ export interface BoardMaterialRecord {
   tuning?: BoardMaterialTuning;
 }
 
-/** `solid`: tokens set on it stand on its top. `lift`: how high it stands, in grid squares. */
-export interface BoardPropRecord { id: string; asset: string; x: number; y: number; scale: number; turn: number; solid?: true; lift?: number }
+export interface BoardPropRecord { id: string; asset: string; x: number; y: number; scale: number; turn: number }
 
 export interface BoardLighting { enabled: boolean; ambient: number; ambientColor: string | null }
 
@@ -98,17 +91,6 @@ export interface BoardLayerRecord {
   props: BoardPropRecord[];
   fogHeight: number | null;
   wallThickness: number | null;
-  /** The layer's painted water; absent for none. */
-  water?: BoardWater;
-}
-
-/**
- * Painted water as Tabletop keeps it: the mask's size in texels, its run lengths (base64 varints) and how it moves.
- * Under the fog it still shows only as the board draws it there (black): the mask is the GM's whole drawing.
- */
-export interface BoardWater {
-  mask: { width: number; height: number; data: string };
-  motion?: { kind: string; amount: number; direction: number; tint: string; clarity: number } | null;
 }
 
 export interface BoardExtras {
@@ -127,12 +109,6 @@ export interface BoardExtras {
   wallThickness: number | null;
   /** The scenes stacked with this one, lowest first; absent when it stands alone. Sent with the first part only. */
   layers?: BoardLayerRecord[];
-  /** The water painted on the scene; absent for none. Sent with the first part only. */
-  water?: BoardWater;
-  /** How the GM draws the scenes stacked above (Tabletop's Upper layers), so players see them the same; absent from an older Tabletop. */
-  layerLook?: 'solid' | 'faded' | 'transparent';
-  /** Where the marker sheets lie on the players' table, as the GM placed them on this map; absent for none. Sent with the first part only. */
-  arTable?: ArTable;
 }
 
 export interface BoardCamera {
@@ -147,8 +123,5 @@ export interface BoardCamera {
  */
 /** The most the layers of one scene may carry: each layer's records, and all the layers together as JSON (a layer that would pass it is left out). */
 export const BOARD_LAYER_LIMITS = Object.freeze({ layers: 8, walls: 400, lights: 60, props: 100, bytes: 110 * 1024 });
-
-/** The longest painted water mask sent (its base64 text): the scene's own, and a layer's (which counts towards the layers' bytes). */
-export const BOARD_WATER_LIMITS = Object.freeze({ scene: 60 * 1024, layer: 40 * 1024, side: 2048 });
 
 export const BOARD_PART_LIMITS = Object.freeze({ walls: 1500, lights: 1000, props: 1000, materials: 200, maps: 8, parts: 64, text: 200 });

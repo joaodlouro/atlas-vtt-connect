@@ -1,3 +1,5 @@
+import { openTokenEditor } from './tokenEditor.mts';
+import type { TokenEdit } from '../src/app/online/control/tokenEdits';
 // online-client/mapView.mts
 /**
  * The map on the join page. It binds the canvas and its input, the Follow GM and Fit map
@@ -66,8 +68,12 @@ export interface MapViewOptions {
   viewButtons: HTMLElement;
   followButton: HTMLButtonElement;
   fitButton: HTMLButtonElement;
+  tokenPanel?: HTMLElement;
+  onTokenSelected?: () => void;
   /** Sends one drop of a controlled token; false when it could not be sent. */
   sendMove(tokenId: string, x: number, y: number): boolean;
+  sendCopy?(tokenId: string): boolean;
+  sendEdit?(tokenId: string, edit: TokenEdit): boolean;
   /** Sends new points of the player's laser; false when they could not be sent. */
   sendLaser(points: ScenePoint[], lifted: boolean, dt: number[], color?: string, size?: number): boolean;
   /** Sends a ping at a world point; false when it could not go. */
@@ -133,6 +139,12 @@ export class MapView {
   private hover: ScreenPoint | null = null;
   /** The token the player selected with a click (Atlas's selection): its UI grows and shows its numbers. */
   private selected: string | null = null;
+  private copied: string | null = null;
+  private editorSignature = '';
+  private closeEditor: (() => void) | null = null;
+  private controlled: ReadonlySet<string> = new Set();
+  private connected = false;
+  private paused = false;
   /** The token under the pointer: its numbers show, and its conditions card. */
   private hovered: string | null = null;
   /** Ctrl or Cmd is down: Atlas then shows a token's stat block instead of its conditions card. */
@@ -183,7 +195,7 @@ export class MapView {
       laserSize: options.laserSize ?? null,
       onChange: () => this.toolsChanged(),
     });
-    this.input = new ViewInput(this.camera, this.tools);
+    this.input = new ViewInput(this.camera, this.tools, (point) => this.editAt(point), (point) => { if (this.options.tokenPanel && this.tools.tool === 'move') this.select(point); });
     this.hoverCard = options.hoverCard ? new HoverCardView(options.hoverCard) : null;
     this.handout = options.handout ? new HandoutView({ ...options.handout, ...(options.active ? { active: options.active } : {}) }) : null;
     this.note = options.note && options.requestNote
@@ -200,10 +212,13 @@ export class MapView {
       this.initiative?.update(this.scene, true);
     });
     this.listeners.signal.addEventListener('abort', stopRing, { once: true });
+    options.tokenPanel?.addEventListener('focusout', (event) => { if (!options.tokenPanel?.contains(event.relatedTarget as Node | null)) queueMicrotask(() => this.updateTokenPanel()); }, { signal: this.listeners.signal });
   }
 
   /** The scene to show; null shows nothing and resets the camera. */
   setScene(scene: PlayerScene | null): void {
+    if (scene?.sceneId !== this.scene?.sceneId) { this.closeEditor?.(); this.closeEditor = null; this.selected = null; }
+    if (this.scene?.sceneId !== scene?.sceneId) this.copied = null;
     // Another scene: the frame players saw fades into it, as Atlas's player window crossfades (`crossfadeToNextMap`).
     if (this.scene && scene && this.scene.sceneId !== scene.sceneId) this.crossfade();
     this.hasScene = scene !== null;
@@ -217,11 +232,13 @@ export class MapView {
     this.updateTurn();
     this.updateHandout();
     this.initiative?.update(scene);
+    this.updateTokenPanel();
   }
 
   /** The sheets of the tokens this player controls (`token-sheets`): Ctrl+hover over one shows its stat block. */
   setSheets(entries: readonly TokenSheet[]): void {
     this.sheets = new Map(entries.map((entry) => [entry.tokenId, entry]));
+    this.updateTokenPanel();
     this.updateHoverCard();
   }
 
@@ -231,13 +248,19 @@ export class MapView {
 
   /** The tokens this player controls, from the GM's latest list. */
   setControlled(tokenIds: readonly string[]): void {
+    this.controlled = new Set(tokenIds);
+    if (this.copied && !this.controlled.has(this.copied)) this.copied = null;
     this.moves.setControlled(tokenIds);
+    this.updateTokenPanel();
   }
 
   /** Whether the player is admitted: only then can tokens be dragged and tools send. */
   setConnected(connected: boolean): void {
+    this.connected = connected;
+    if (!connected) this.copied = null;
     this.moves.setConnected(connected);
     this.tools.setConnected(connected);
+    this.updateTokenPanel();
   }
 
   /** The GM refused a move of this token. */
@@ -247,6 +270,7 @@ export class MapView {
 
   /** The scene is paused (the GM is on another scene) or live again: the move notice shows the paused banner while paused. */
   setPaused(paused: boolean): void {
+    this.paused = paused;
     this.moves.setPaused(paused);
   }
 
@@ -346,6 +370,7 @@ export class MapView {
 
   /** The session is over: stops drawing and frees the fog image. The page does not use the view again. */
   dispose(): void {
+    this.closeEditor?.();
     this.transition?.cancel();
     this.listeners.abort();
     this.handout?.dispose();
@@ -596,6 +621,10 @@ export class MapView {
     const id = scene ? tokenAt(scene, this.moves.overlay().positions, this.camera.toWorld(point)) : null;
     if (id === this.selected) return;
     this.selected = id;
+    this.editorSignature = '';
+    this.options.tokenPanel?.replaceChildren();
+    this.updateTokenPanel();
+    if (id) this.options.onTokenSelected?.();
     this.renderer.setOverlay(this.tokenOverlay());
     this.updateHoverCard();
   }
@@ -604,11 +633,52 @@ export class MapView {
     this.options.viewButtons.hidden = !this.hasScene || this.camera.isFollowing();
   }
 
+  private updateTokenPanel(): void {
+    const panel = this.options.tokenPanel;
+    if (!panel) return;
+    const id = this.selected;
+    const token = id ? this.scene?.tokens[id] : null;
+    if (!token || !id) { panel.hidden = true; panel.replaceChildren(); this.editorSignature = ''; return; }
+    panel.hidden = panel.dataset.inactive === 'true';
+    const signature = JSON.stringify([id, token, this.sheets.get(id), this.controlled.has(id), this.connected]);
+    if (signature === this.editorSignature || panel.contains(panel.ownerDocument.activeElement)) return;
+    this.editorSignature = signature;
+    panel.replaceChildren();
+    if (!this.controlled.has(id) || !this.connected) { panel.textContent = `${token.name ?? 'Token'} — somente leitura. O mestre precisa conceder controle.`; return; }
+    const sceneId = this.scene?.sceneId;
+    openTokenEditor(panel.ownerDocument, token, this.sheets.get(id), (edit) => this.connected && !this.paused && this.scene?.sceneId === sceneId && this.controlled.has(id) && (this.options.sendEdit?.(id, edit) ?? false), panel, true);
+  }
+
+  private editAt(point: ScreenPoint): boolean {
+    const id = this.scene ? tokenAt(this.scene, this.moves.overlay().positions, this.camera.toWorld(point)) : null;
+    return id !== null && this.editToken(id);
+  }
+
+  selectToken(id: string): void {
+    if (!this.scene?.tokens[id]) return;
+    this.selected = id; this.editorSignature = '';
+    this.options.tokenPanel?.replaceChildren(); this.updateTokenPanel(); this.options.onTokenSelected?.();
+    this.renderer.setOverlay(this.tokenOverlay());
+  }
+
+  private editToken(id: string): boolean {
+    if (this.options.tokenPanel) { this.selected = id; this.updateTokenPanel(); this.options.onTokenSelected?.(); return true; }
+    const token = this.scene?.tokens[id];
+    if (!token || !this.options.sendEdit || !this.connected || this.paused || !this.controlled.has(id)) return false;
+    this.closeEditor?.();
+    const sceneId = this.scene?.sceneId;
+    this.closeEditor = openTokenEditor(this.options.canvas.ownerDocument, token, this.sheets.get(id), (edit) =>
+      this.connected && !this.paused && this.scene?.sceneId === sceneId && this.controlled.has(id)
+        && (this.options.sendEdit?.(id, edit) ?? false));
+    return true;
+  }
+
   private bind(): void {
     const { canvas, followButton, fitButton } = this.options;
     const { signal } = this.listeners;
     bindMapInput({
       canvas, input: this.input, tools: this.tools, signal,
+      ...(this.options.tokenPanel ? {} : { onTokenEdit: (point: ScreenPoint) => this.editAt(point) }),
       ...(this.options.active ? { active: this.options.active } : {}),
       ...(this.options.doc ? { doc: this.options.doc } : {}),
       onHover: (point) => {
@@ -637,6 +707,21 @@ export class MapView {
     };
     doc.addEventListener('keydown', (event) => {
       modifierFrom(event);
+      const target = event.target as Element | null;
+      const editing = target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"]');
+      const dialog = doc.querySelector('dialog[open], [role="dialog"], [aria-modal="true"]');
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && !event.repeat
+        && !event.defaultPrevented && !editing && !dialog && this.options.active?.() !== false
+        && this.connected && !this.paused && this.options.sendCopy) {
+        const key = event.key.toLowerCase();
+        if (key === 'c' && this.selected && this.controlled.has(this.selected) && this.scene && Object.hasOwn(this.scene.tokens, this.selected)) {
+          this.copied = this.selected;
+          event.preventDefault();
+        } else if (key === 'v' && this.copied && this.controlled.has(this.copied) && this.scene && Object.hasOwn(this.scene.tokens, this.copied)) {
+          if (this.options.sendCopy(this.copied)) event.preventDefault();
+        }
+      }
+      if (event.key === 'Enter' && this.selected && !editing && !dialog && this.options.active?.() !== false && this.editToken(this.selected)) event.preventDefault();
       // Escape lets go of the selection, as in Atlas, when nothing above the map took it.
       if (event.key === 'Escape' && this.selected !== null && this.options.active?.() !== false && !event.defaultPrevented) this.select({ x: -1e9, y: -1e9 });
     }, { signal });

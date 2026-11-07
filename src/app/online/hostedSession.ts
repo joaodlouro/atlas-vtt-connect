@@ -4,7 +4,6 @@
  * players' dice and lasers (B7) are optional parts: each starts only when its dep is given, and without
  * it the session runs without that feature (no token assignments, no dice, no lasers relayed).
  */
-import { PlayerColors } from './tools/playerColors';
 import type { ViewsApi } from '@atlas-vtt/api-types';
 import { Notice } from 'obsidian';
 import { AssetServer } from './assets/AssetServer';
@@ -18,7 +17,6 @@ import { normalizePlayerName } from './protocol';
 import { AssetRegistry } from './scene/AssetRegistry';
 import { BoardSender } from './scene/BoardSender';
 import { BoardSessionHub, type BoardSession } from './tools/BoardSessionHub';
-import { followMovedTokens } from './control/movedTokens';
 import type { HandoutSource } from './handouts';
 
 /** No handout source: nothing is ever shown. */
@@ -40,7 +38,6 @@ import type { HostTransport } from './transport/types';
 import type { JoinRequestInfo } from './ui/joinRequestNotice';
 import type { SheetRollExtras, SheetRollLabels } from './tools/DiceHost';
 import type { OfferedDiceRules } from './tools/toolMessages';
-import { ArViewRelay } from './tools/ArViewRelay';
 
 const BAD_PAGE_URL = "The player page address in Connect for Atlas VTT's settings isn't a valid web address.";
 const RELAY_TOO_LONG = 'Your relay (TURN) settings are too long for a join link — remove some.';
@@ -57,8 +54,6 @@ export interface HostedContext {
   projection: SceneHub;
   /** Tabletop's 3D board on the GM's side: what the relays accept reaches it too. */
   board?: BoardSessionHub;
-  /** The colour each player picked (else their place's). */
-  colors?: PlayerColors;
 }
 
 export interface HostedPart {
@@ -166,7 +161,7 @@ export async function hostSession(env: HostEnvironment, sharing: HostedSharingHo
   let joinUrl: string;
   let linkWorks: boolean;
   try {
-    joinUrl = buildJoinUrl(online.playerPageUrl, host.id, online, identity?.id ?? null);
+    joinUrl = buildJoinUrl(online.playerPageUrl, host.id, online, identity?.id ?? null, host.relay);
     linkWorks = parseJoinFragment(new URL(joinUrl).hash) !== null;
   } catch {
     host.close();
@@ -210,10 +205,7 @@ export async function hostSession(env: HostEnvironment, sharing: HostedSharingHo
     handouts: env.scene.handout ?? NO_HANDOUT,
     coneAngle: (mapPath) => env.scene.coneAngle?.(mapPath) ?? 90,
   }) : null;
-  // Each player's colour: started first, so the relays colour a player's first ping or template with it.
-  const colors = new PlayerColors(scenes);
-  colors.start();
-  const context: HostedContext = { session: scenes, presented: env.scene.presented, projection: hub, ...(boardHub ? { board: boardHub } : {}), colors };
+  const context: HostedContext = { session: scenes, presented: env.scene.presented, projection: hub, ...(boardHub ? { board: boardHub } : {}) };
   // The GM's view of the scene it shows, to that scene's players only; started after the scene hub.
   const cameraSender = new CameraSender({ session: scenes, presented: env.scene.presented, projection: hub, tabs });
   // Tabletop's 3D board, to the players who show it: after the camera, so its camera follows the scene's.
@@ -229,14 +221,7 @@ export async function hostSession(env: HostEnvironment, sharing: HostedSharingHo
   const laser = env.laser?.(context) ?? null;
   const pings = env.pings?.(context) ?? null;
   const templates = env.templates?.(context) ?? null;
-  // Players in augmented reality, as eyes on Tabletop's board: only where there is one.
-  const arViews = boardHub ? new ArViewRelay({ session: scenes, projection: hub, board: boardHub, colorOf: (playerId) => colors.colorOf(playerId) }) : null;
   boardHub?.useTemplates(templates instanceof TemplateHost ? templates : null);
-  // A token the GM moves to another scene on Tabletop's board stays its players', and they are shown that scene.
-  // The "Controlled by" menu on Tabletop's board, as on Atlas's own.
-  boardHub?.useControl(tokenControl ? { control: tokenControl.control, players: () => session.getPlayers() } : null);
-  boardHub?.useMoves(followMovedTokens({ control: tokenControl?.control ?? null, tabs, assign: (playerId, tab) => hub.assign(playerId, tab) }));
-
   const notes = env.notes?.(context) ?? null;
   const rollFor = dice?.rollFor ? (player: SessionPlayer, formula: string, extras?: SheetRollExtras): boolean => dice.rollFor?.(player, formula, extras) ?? false : null;
   const sheets = tokenControl && env.sheets ? env.sheets({ ...context, control: tokenControl.control, ...(rollFor ? { rollFor } : {}) }) : null;
@@ -257,8 +242,7 @@ export async function hostSession(env: HostEnvironment, sharing: HostedSharingHo
     stopSharing = null;
     stopErrors();
     assetServer.stop();
-    for (const part of given([arViews, notes, templates, pings, sheets, tokenControl, laser, dice])) part.stop();
-    colors.stop();
+    for (const part of given([notes, templates, pings, sheets, tokenControl, laser, dice])) part.stop();
     boardSender.stop();
     cameraSender.stop();
     stopLog?.();
@@ -278,7 +262,7 @@ export async function hostSession(env: HostEnvironment, sharing: HostedSharingHo
     cameraSender.start();
     boardSender.start();
     assetServer.start();
-    for (const part of given([tokenControl, dice, laser, sheets, pings, templates, notes, arViews])) {
+    for (const part of given([tokenControl, dice, laser, sheets, pings, templates, notes])) {
       part.start();
       parts.push(part);
     }

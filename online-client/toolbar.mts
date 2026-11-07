@@ -37,9 +37,6 @@ export interface PageToolbarOptions {
   layout?: () => ToolbarFitLayout;
 }
 
-/** What the player's colour is for: everything of theirs others see, not the laser alone. */
-export const PLAYER_COLOR_HINT = 'Everyone sees your laser, pings, templates and spells in it.';
-
 /** The page's side gutter, on each side of the bar. */
 const GUTTER = 16;
 
@@ -119,8 +116,6 @@ export class PageToolbar {
   private readonly moreButton: HTMLButtonElement;
   private readonly moreMenu: HTMLElement;
   private moreWidth = 0;
-  /** The board's own buttons (2D/3D, Eyes, AR) at the bar's end; More tools makes room for them. */
-  private group: HTMLElement | null = null;
   private readonly listeners = new AbortController();
   private resizeObserver: ResizeObserver | null = null;
 
@@ -215,14 +210,6 @@ export class PageToolbar {
     this.render();
   }
 
-  /** Puts the board's own buttons (2D/3D, Eyes, AR, with their menus) at the end of the bar, after a rule. */
-  addGroup(element: HTMLElement): void {
-    element.classList.add('toolbar-group');
-    this.group = element;
-    this.options.root.append(element);
-    this.fit();
-  }
-
   /** The page's tool, shape or tray changed. */
   update(state: Partial<Pick<ToolbarState, 'tool' | 'shape' | 'templateShape' | 'ownTemplates' | 'diceOpen' | 'laserColor' | 'laserSize'>>): void {
     this.state = { ...this.state, ...state };
@@ -271,7 +258,7 @@ export class PageToolbar {
     flyout.classList.add('swatch-menu');
     const colourLabel = document.createElement('span');
     colourLabel.className = 'menu-label';
-    colourLabel.textContent = 'Your colour';
+    colourLabel.textContent = 'Laser colour';
     const grid = document.createElement('div');
     grid.className = 'swatch-grid';
     for (const swatch of laserSwatches('')) {
@@ -294,7 +281,7 @@ export class PageToolbar {
     }
     const hint = document.createElement('p');
     hint.className = 'menu-hint';
-    hint.textContent = `${PLAYER_COLOR_HINT} ${LASER_COLOR_HINT}`;
+    hint.textContent = LASER_COLOR_HINT;
     flyout.append(colourLabel, grid, hint);
     if (this.options.onLaserSize) {
       const row = document.createElement('div');
@@ -408,13 +395,6 @@ export class PageToolbar {
     this.resizeObserver.observe(root.parentElement ?? root);
   }
 
-  /** The board buttons' width and the gap before them; nothing while none shows. */
-  private groupWidth(gap: number): number {
-    const group = this.group;
-    if (!group || group.hidden || ![...group.querySelectorAll<HTMLButtonElement>(':scope > button')].some((button) => !button.hidden)) return 0;
-    return this.measureOf(group) + gap;
-  }
-
   private measureOf(element: HTMLElement): number {
     return this.options.measure?.(element) ?? element.getBoundingClientRect().width;
   }
@@ -425,8 +405,7 @@ export class PageToolbar {
     const style = getComputedStyle(root);
     const px = (value: string): number => Number.parseFloat(value) || 0;
     return {
-      // The board's buttons stay in the bar: the tools fit in what they leave.
-      available: (root.parentElement?.clientWidth ?? window.innerWidth) - 2 * GUTTER - this.groupWidth(px(style.columnGap)),
+      available: (root.parentElement?.clientWidth ?? window.innerWidth) - 2 * GUTTER,
       chrome: px(style.paddingLeft) + px(style.paddingRight) + px(style.borderLeftWidth) + px(style.borderRightWidth),
       gap: px(style.columnGap),
       overflowButtonWidth: this.moreWidth || this.measureOf(this.moreButton),

@@ -1,3 +1,5 @@
+import { connectionFailureReason } from './transport/connectionFailure';
+import { isTokenEdit, type TokenEdit } from './control/tokenEdits';
 /**
  * The player's side of an online session: join a GM, wait for approval, keep
  * the player list, and reconnect after a drop. Shared with the web player page,
@@ -14,10 +16,7 @@ import type { AdvantageSide, SheetRollRef, TokenSheet } from './tools/sheets';
 import type { PinNoteAnswer } from './tools/pinNotes';
 import type { PlayerPing } from './tools/pings';
 import type { MapTemplate } from './tools/templates';
-import type { MapSpell, SpellChange } from './tools/spells';
 import type { TemplateChange } from './view/tools/PlayerTools';
-import type { ArPose } from './tools/arViews';
-import type { ArSurvey } from './tools/arTable';
 import { channelPort } from './transport/channelPort';
 import type { ChannelPort, ClientTransport, PeerLink } from './transport/types';
 
@@ -84,10 +83,6 @@ export interface PlayerSessionOptions {
   onPing?(ping: PlayerPing): void;
   /** Every lasting template on the scene `sceneId`, whenever they change. */
   onTemplates?(sceneId: string, templates: readonly MapTemplate[]): void;
-  /** Every spell on the scene `sceneId`, whenever they change. */
-  onSpells?(sceneId: string, spells: readonly MapSpell[]): void;
-  /** The player's own colour, sent on each admission (null: the one their place gives). */
-  color?(): string | null;
   /** The GM's answer to a pin this player opened: its note, or null when it cannot be read. */
   onPinNote?(answer: PinNoteAnswer): void;
   /** Whether the GM can send the scene for Tabletop's 3D board (`board-offer`); `dice` when it also takes thrown dice (`diceResults`), with its rules (null for the default). */
@@ -160,6 +155,21 @@ export class PlayerSession {
    * Sends one drop of a token for the scene this player has. False when it cannot go
    * (not admitted, no link, no scene), so the drag sends nothing. The GM checks it.
    */
+  sendTokenCopy(tokenId: string): boolean {
+    const scene = this.inbox.scene;
+    if (this.finished || this.state.status !== 'admitted' || !this.link || !scene || !this.controlled.includes(tokenId)) return false;
+    this.link.send('control', encodeControl({ v: 1, type: 'token-copy', sceneId: scene.sceneId, tokenId }));
+    return true;
+  }
+
+  sendTokenEdit(tokenId: string, edit: TokenEdit): boolean {
+    const scene = this.inbox.scene;
+    if (this.finished || this.state.status !== 'admitted' || !this.link || !scene || this.paused
+      || !this.controlled.includes(tokenId) || !Object.hasOwn(scene.tokens, tokenId) || !isTokenEdit(edit)) return false;
+    this.link.send('control', encodeControl({ v: 1, type: 'token-edit', sceneId: scene.sceneId, tokenId, edit }));
+    return true;
+  }
+
   sendTokenMove(tokenId: string, x: number, y: number): boolean {
     const scene = this.inbox.scene;
     if (this.finished || this.state.status !== 'admitted' || !this.link || !scene) return false;
@@ -189,21 +199,6 @@ export class PlayerSession {
     const scene = this.inbox.scene;
     if (this.finished || this.state.status !== 'admitted' || !this.link || !scene) return false;
     this.link.send('control', encodeControl({ v: 1, type: 'map-template', sceneId: scene.sceneId, ...('add' in change ? { add: change.add } : 'remove' in change ? { remove: change.remove } : { clear: true as const }) }));
-    return true;
-  }
-
-  /** The player picked their colour: the GM is told (it colours their laser, pings, templates and spells). */
-  sendColor(color: string): boolean {
-    if (this.finished || this.state.status !== 'admitted' || !this.link) return false;
-    this.link.send('control', encodeControl({ v: 1, type: 'player-color', color }));
-    return true;
-  }
-
-  /** Asks the GM to cast a spell on the scene the player has, take one of theirs off or clear theirs; false when it cannot go. */
-  sendSpell(change: SpellChange): boolean {
-    const scene = this.inbox.scene;
-    if (this.finished || this.state.status !== 'admitted' || !this.link || !scene) return false;
-    this.link.send('control', encodeControl({ v: 1, type: 'map-spell', sceneId: scene.sceneId, ...('add' in change ? { add: change.add } : 'remove' in change ? { remove: change.remove } : { clear: true as const }) }));
     return true;
   }
 
@@ -261,8 +256,8 @@ export class PlayerSession {
     let link: PeerLink;
     try {
       link = await this.options.transport.connect(this.options.hostId);
-    } catch {
-      this.dropped();
+    } catch (error) {
+      this.dropped(connectionFailureReason(error));
       return;
     }
     if (this.finished) {
@@ -304,10 +299,6 @@ export class PlayerSession {
         this.takesDiceResults = false;
         this.tableProof = message.table ?? null;
         this.update({ status: 'admitted', playerId: message.playerId, title: message.session.title, reason: null });
-        {
-          const color = this.options.color?.() ?? null;
-          if (color) link.send('control', encodeControl({ v: 1, type: 'player-color', color }));
-        }
         if (this.assetLink !== link) {
           // A repeated admission on the same link must not start the handler over.
           this.assetLink = link;
@@ -341,9 +332,6 @@ export class PlayerSession {
         break;
       case 'token-sheets':
         this.options.onSheets?.(message.entries);
-        break;
-      case 'map-spells':
-        this.options.onSpells?.(message.sceneId, message.spells);
         break;
       case 'map-templates':
         this.options.onTemplates?.(message.sceneId, message.templates);
@@ -383,22 +371,6 @@ export class PlayerSession {
     }
   }
 
-  /** Tells the GM where this phone's camera is in augmented reality over the scene the player has (null: not tracking); false when it cannot go. */
-  sendArView(pose: ArPose | null): boolean {
-    const scene = this.inbox.scene;
-    if (this.finished || this.state.status !== 'admitted' || !this.link || !scene) return false;
-    this.link.send('control', encodeControl({ v: 1, type: 'ar-view', sceneId: scene.sceneId, pose }));
-    return true;
-  }
-
-  /** Sends the GM this phone's survey of the table's marker sheets, for the scene the player has; false when it cannot go. */
-  sendArSurvey(survey: ArSurvey): boolean {
-    const scene = this.inbox.scene;
-    if (this.finished || this.state.status !== 'admitted' || !this.link || !scene) return false;
-    this.link.send('control', encodeControl({ v: 1, type: 'ar-survey', sceneId: scene.sceneId, survey }));
-    return true;
-  }
-
   /** Asks the GM to send (or stop sending) the board extras of this player's scene; false while not admitted. */
   sendBoardRequest(on: boolean): boolean {
     if (this.finished || this.state.status !== 'admitted' || !this.link) return false;
@@ -423,10 +395,10 @@ export class PlayerSession {
   }
 
   /** The link closed or could not be made: retry if we were in, else stop. */
-  private dropped(): void {
+  private dropped(reason = 'unreachable'): void {
     if (this.finished) return;
     if (!this.wasAdmitted) {
-      this.finish('lost', 'unreachable');
+      this.finish('lost', reason);
       return;
     }
     if (this.attempt === 0) this.droppedAt = Date.now();

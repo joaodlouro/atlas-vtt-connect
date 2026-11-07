@@ -1,3 +1,4 @@
+import { isTokenEdit, type TokenEdit } from './control/tokenEdits';
 /**
  * The online play wire format. Shared with the web player page, so this file
  * imports nothing but the scene wire format beside it: no Obsidian, no PIXI, no PeerJS.
@@ -12,11 +13,8 @@ import type { BoardCamera, BoardExtras } from './scene/boardTypes';
 import { isBoardCamera, isBoardExtras, isBoardPart } from './scene/boardValidation';
 import { ADVANTAGE_SIDES, isSheetRollRef, isTokenSheets, type AdvantageSide, type SheetRollRef, type TokenSheet } from './tools/sheets';
 import { isPingPoint } from './tools/pings';
-import { isArPose, type ArPose } from './tools/arViews';
-import { isArTable, type ArSurvey } from './tools/arTable';
 import { isPinNote, type PinNote } from './tools/pinNotes';
 import { isMapTemplates, isTemplateDraft, isTemplateId, type MapTemplate, type TemplateShape } from './tools/templates';
-import { isMapSpells, isSpell, isSpellId, type MapSpell, type Spell } from './tools/spells';
 import { cleanLoggedEntries, isDiceLogEntries, isDiceModifier, isDiceSelection, isLaserColor, isLaserPoints, isLaserTimes, isOfferedDiceRules, isPhysicalRoll, type DiceLogEntry, type OfferedDiceRules, type PhysicalDie } from './tools/toolMessages';
 export const PROTOCOL_VERSION = 1;
 export const MAX_CONTROL_MESSAGE_BYTES = 256 * 1024;
@@ -105,6 +103,8 @@ export type ControlMessage =
   | { v: 1; type: 'token-control'; tokenIds: string[] }
   /** Player to GM, once per drop: where the player let go of one of their tokens, in world units. */
   | { v: 1; type: 'token-move'; sceneId: string; tokenId: string; x: number; y: number }
+  | { v: 1; type: 'token-copy'; sceneId: string; tokenId: string }
+  | { v: 1; type: 'token-edit'; sceneId: string; tokenId: string; edit: TokenEdit }
   /** GM to the player who sent the move: it failed a check, so the token stays where the scene has it. */
   | { v: 1; type: 'token-move-refused'; tokenId: string }
   /** Player to GM: a roll from the dice tray, rolled on the GM's side; with `advantage`, on the side the player chose (a lone d20). */
@@ -129,12 +129,6 @@ export type ControlMessage =
   | { v: 1; type: 'map-template'; sceneId: string; add?: { shape: TemplateShape; start: ScenePoint; end: ScenePoint }; remove?: string; clear?: true }
   /** GM to players: every template on the scene, whenever they change. */
   | { v: 1; type: 'map-templates'; sceneId: string; templates: MapTemplate[] }
-  /** Player to GM: cast a spell through a token's eyes on the scene they have, take one of theirs off, or clear theirs (`tools/spells.ts`). */
-  | { v: 1; type: 'map-spell'; sceneId: string; add?: Spell; remove?: string; clear?: true }
-  /** Player to GM, on admission and when they pick another: their own colour (`tools/playerColors.ts`), one of the laser swatches. */
-  | { v: 1; type: 'player-color'; color: string }
-  /** GM to players: every spell on the scene, whenever they change. */
-  | { v: 1; type: 'map-spells'; sceneId: string; spells: MapSpell[] }
   /** Player to GM: open the note of a readable pin of the scene they have, by the pin's alias. */
   | { v: 1; type: 'note-request'; sceneId: string; pinId: string }
   /** GM to the player who asked: the pin's note (`tools/pinNotes.ts`), or null when it cannot be read or is no longer theirs to read. */
@@ -146,18 +140,11 @@ export type ControlMessage =
   /** GM to a player who asked: one part of its scene's board extras (`parts` of one `seq` make the whole), or none. */
   | { v: 1; type: 'board-extras'; seq: number; part: number; parts: number; extras: BoardExtras | null }
   /** GM to a player who asked: the GM's 3D view of its scene, for the "GM view" button; null when there is none. */
-  | { v: 1; type: 'board-camera'; camera: BoardCamera | null }
-  /**
-   * Player to GM, about ten a second while it moves: where the player's phone camera is in augmented reality over the
-   * scene they have (`tools/arViews.ts`), for the eye on the GM's board; null when the tracking is lost or AR ends.
-   */
-  | { v: 1; type: 'ar-view'; sceneId: string; pose: ArPose | null }
-  /** Player to GM: the marker sheets on the table as this phone learnt them (`tools/arTable.ts`), for the GM to place on the map. */
-  | { v: 1; type: 'ar-survey'; sceneId: string; survey: ArSurvey };
+  | { v: 1; type: 'board-camera'; camera: BoardCamera | null };
 
 /** What an admitted player may send besides `ping`, `pong` and `bye`; the GM drops every other type from a player. */
 export const PLAYER_MESSAGE_TYPES: ReadonlySet<ControlMessage['type']> = new Set<ControlMessage['type']>([
-  'scene-resync', 'token-move', 'dice-roll', 'dice-result', 'laser', 'sheet-roll', 'map-ping', 'map-template', 'note-request', 'board-request', 'ar-view', 'ar-survey', 'map-spell', 'player-color',
+  'scene-resync', 'token-move', 'token-copy', 'token-edit', 'dice-roll', 'dice-result', 'laser', 'sheet-roll', 'map-ping', 'map-template', 'note-request', 'board-request',
 ]);
 
 export type Decoded =
@@ -210,6 +197,8 @@ const VALIDATORS: Record<ControlMessage['type'], (m: Fields) => boolean> = {
     && m.tokenIds.every((id) => isSceneId(id)),
   // Any number: one JSON reads as Infinity (`1e400`) is the GM's check to refuse, not a broken message.
   'token-move': (m) => isSceneId(m.sceneId) && isSceneId(m.tokenId) && typeof m.x === 'number' && typeof m.y === 'number',
+  'token-copy': (m) => isSceneId(m.sceneId) && isSceneId(m.tokenId),
+  'token-edit': (m) => isSceneId(m.sceneId) && isSceneId(m.tokenId) && isTokenEdit(m.edit),
   'token-move-refused': (m) => isSceneId(m.tokenId),
   'dice-roll': (m) => isDiceSelection(m.dice) && isDiceModifier(m.modifier) && (m.advantage === undefined || (ADVANTAGE_SIDES as readonly unknown[]).includes(m.advantage)),
   'dice-result': (m) => isPhysicalRoll(m),
@@ -224,10 +213,6 @@ const VALIDATORS: Record<ControlMessage['type'], (m: Fields) => boolean> = {
     && (m.add === undefined || (typeof m.add === 'object' && m.add !== null && isTemplateDraft(m.add)))
     && (m.remove === undefined || isTemplateId(m.remove)) && (m.clear === undefined || m.clear === true),
   'map-templates': (m) => isSceneId(m.sceneId) && isMapTemplates(m.templates),
-  'map-spell': (m) => isSceneId(m.sceneId) && [m.add, m.remove, m.clear].filter((part) => part !== undefined).length === 1
-    && (m.add === undefined || isSpell(m.add)) && (m.remove === undefined || isSpellId(m.remove)) && (m.clear === undefined || m.clear === true),
-  'map-spells': (m) => isSceneId(m.sceneId) && isMapSpells(m.spells),
-  'player-color': (m) => isLaserColor(m.color),
   'map-ping': (m) => isSceneId(m.sceneId) && isPingPoint(m) && (m.from === undefined || isSceneId(m.from)) && (m.color === undefined || isLaserColor(m.color)),
   'note-request': (m) => isSceneId(m.sceneId) && isSceneId(m.pinId),
   'pin-note': (m) => isSceneId(m.sceneId) && isSceneId(m.pinId) && (m.note === null || isPinNote(m.note)),
@@ -236,8 +221,6 @@ const VALIDATORS: Record<ControlMessage['type'], (m: Fields) => boolean> = {
   'board-request': (m) => typeof m.on === 'boolean',
   'board-extras': (m) => isBoardPart(m) && (m.extras === null || isBoardExtras(m.extras)),
   'board-camera': (m) => m.camera === null || isBoardCamera(m.camera),
-  'ar-view': (m) => isSceneId(m.sceneId) && (m.pose === null || isArPose(m.pose)),
-  'ar-survey': (m) => isSceneId(m.sceneId) && isArTable(m.survey),
 };
 
 export function encodeControl(message: ControlMessage): string {

@@ -1,3 +1,4 @@
+import { applyLocalServerSettings } from './localServerSettings';
 import type { BoardSession } from './tools/BoardSessionHub';
 import { readPinNote } from './atlas/pinNoteReader';
 import { NoteHost } from './tools/NoteHost';
@@ -130,6 +131,8 @@ export class OnlineSessionService {
     const generation = ++this.generation;
     const { deps } = this;
     try {
+      if (this.app.vault?.adapter) await applyLocalServerSettings(this.app, this.settings);
+      if (generation !== this.generation) return;
       const hosted = await hostSession({
         ...(deps.tokenControl ? { tokenControl: deps.tokenControl } : {}),
         ...(deps.dice ? { dice: deps.dice } : {}),

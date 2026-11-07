@@ -6,9 +6,8 @@
  * and one whose file is not hashed yet is left out until it is (the registry asks for another projection).
  */
 import type { Shows } from './FogCoverage';
-import { BOARD_LAYER_LIMITS, BOARD_WATER_LIMITS, type BoardExtras, type BoardWater, type BoardLayerRecord, type BoardLightRecord, type BoardMaterialRecord, type BoardPropRecord, type BoardWallRecord } from './boardTypes';
+import { BOARD_LAYER_LIMITS, type BoardExtras, type BoardLayerRecord, type BoardLightRecord, type BoardMaterialRecord, type BoardPropRecord, type BoardWallRecord } from './boardTypes';
 import type { AssetIds, BoardLayerLook, BoardLook } from './sceneContracts';
-import { isArTable, type ArTable } from '../tools/arTable';
 
 type Raw = Record<string, unknown>;
 
@@ -39,9 +38,6 @@ export function projectBoard(state: BoardInput, sceneId: string, visible: Shows 
     lighting: { enabled: lighting.enabled === true, ambient: Math.min(1, Math.max(0, num(lighting.ambient, 0.1))), ambientColor: str(lighting.ambientColor) },
     fogHeight: look?.fogHeight ?? null,
     wallThickness: look?.wallThickness ?? null,
-    ...(look?.layerLook === 'solid' || look?.layerLook === 'faded' || look?.layerLook === 'transparent' ? { layerLook: look.layerLook } : {}),
-    // Only where the players' table is: nothing of the map.
-    ...(isArTable(look?.arTable) ? { arTable: copyTable(look.arTable) } : {}),
   };
   if (!visible) return extras;
   const objects = state.objects ?? {};
@@ -71,8 +67,6 @@ export function projectBoard(state: BoardInput, sceneId: string, visible: Shows 
     layers.push(record);
   }
   if (layers.length > 0) extras.layers = layers;
-  const water = waterOf(look?.water, BOARD_WATER_LIMITS.scene);
-  if (water) extras.water = water;
   extras.materials = [...new Map([...materialIds.values()].filter((entry): entry is BoardMaterialRecord => entry !== null).map((entry) => [entry.id, entry])).values()];
   for (const raw of items(objects.lights)) {
     // Only a light players could find: switched on, and standing where they see.
@@ -90,23 +84,9 @@ export function projectBoard(state: BoardInput, sceneId: string, visible: Shows 
   for (const prop of look?.props ?? []) {
     if (!visible.shows(at(prop.x, prop.y))) continue;
     const asset = assets.idFor(prop.path);
-    if (asset) extras.props.push({ id: prop.id, asset, x: prop.x, y: prop.y, scale: prop.scale, turn: prop.turn, ...(prop.solid ? { solid: true as const } : {}), ...(prop.lift ? { lift: prop.lift } : {}) } satisfies BoardPropRecord);
+    if (asset) extras.props.push({ id: prop.id, asset, x: prop.x, y: prop.y, scale: prop.scale, turn: prop.turn } satisfies BoardPropRecord);
   }
   return extras;
-}
-
-/** The AR table, copied field by field (nothing else the look carries goes). */
-function copyTable(table: ArTable): ArTable {
-  return { squareMm: table.squareMm, groups: table.groups.map(({ group, x, y, heading, w, h }) => ({ group, x, y, heading, w, h })) };
-}
-
-/** Painted water as the wire carries it; none when there is none, or when its mask is longer than `longest`. */
-function waterOf(water: BoardWater | undefined, longest: number): BoardWater | null {
-  if (!water?.mask || typeof water.mask.data !== 'string' || water.mask.data.length > longest) return null;
-  const { width, height, data } = water.mask;
-  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0 || width > BOARD_WATER_LIMITS.side || height > BOARD_WATER_LIMITS.side) return null;
-  const motion = water.motion;
-  return { mask: { width, height, data }, ...(motion ? { motion: { kind: motion.kind, amount: motion.amount, direction: motion.direction, tint: motion.tint, clarity: motion.clarity } } : {}) };
 }
 
 function projectLayer(layer: BoardLayerLook, id: string, assets: Pick<AssetIds, 'idFor'>, material: (id: string | null) => string | null): BoardLayerRecord | null {
@@ -126,8 +106,6 @@ function projectLayer(layer: BoardLayerLook, id: string, assets: Pick<AssetIds, 
     const secret = wall.type === 'secret-door' && !door;
     if (!secret && wall.direction) record.direction = wall.direction;
     if (wall.blocks) record.blocks = wall.blocks;
-    if (typeof wall.width === 'number' && wall.width > 0) record.width = wall.width;
-    if (wall.blocks === 'movement' && !door && !secret && wall.window) record.window = { bottom: wall.window.bottom, top: wall.window.top };
     if (!secret && wall.limited) record.limited = true;
     walls.push(record);
   }
@@ -139,13 +117,11 @@ function projectLayer(layer: BoardLayerLook, id: string, assets: Pick<AssetIds, 
   const props: BoardPropRecord[] = [];
   for (const prop of layer.props.slice(0, BOARD_LAYER_LIMITS.props)) {
     const asset = assets.idFor(prop.path);
-    if (asset) props.push({ id: prop.id, asset, x: prop.x, y: prop.y, scale: prop.scale, turn: prop.turn, ...(prop.solid ? { solid: true as const } : {}), ...(prop.lift ? { lift: prop.lift } : {}) });
+    if (asset) props.push({ id: prop.id, asset, x: prop.x, y: prop.y, scale: prop.scale, turn: prop.turn });
   }
-  const water = waterOf(layer.water, BOARD_WATER_LIMITS.layer);
   return {
     id, elevation: layer.elevation, stands: { ...layer.stands }, image, grid: { ...layer.grid }, walls, lights, props,
     fogHeight: layer.fogHeight, wallThickness: layer.wallThickness,
-    ...(water ? { water } : {}),
   };
 }
 
@@ -179,12 +155,7 @@ function projectWall(raw: Raw, visible: Shows, look: BoardLook | null, assets: P
   // A closed secret door keeps nothing that would set it apart from the wall around it.
   const secret = raw.type === 'secret-door' && !door;
   if (!secret && (raw.direction === 'left' || raw.direction === 'right')) wall.direction = raw.direction;
-  if (raw.blocks === 'sight' || raw.blocks === 'light' || (raw.blocks === 'movement' && raw.type === 'solid')) wall.blocks = raw.blocks;
-  // A window: its opening on Tabletop's board, where the GM set one.
-  const span = wall.blocks === 'movement' ? look?.windowOf?.(id) ?? null : null;
-  if (span) wall.window = { bottom: span.bottom, top: span.top };
-  const width = look?.wallWidth?.(id) ?? null;
-  if (typeof width === 'number' && Number.isFinite(width) && width > 0) wall.width = width;
+  if (raw.blocks === 'sight' || raw.blocks === 'light') wall.blocks = raw.blocks;
   if (!secret && raw.limited === true) wall.limited = true;
   return wall;
 }
