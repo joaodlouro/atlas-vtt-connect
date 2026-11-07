@@ -54,7 +54,6 @@ export async function createWebSocketHost(settings: LocalRelaySettings): Promise
   let room: { roomId: string; hostKey: string; joinKey: string; publicUrl: string };
   try {
     // The same transport runs on the player page, where Obsidian requestUrl is unavailable.
-    // eslint-disable-next-line no-restricted-globals
     const response = await fetch(new URL('api/rooms', settings.url.endsWith('/') ? settings.url : settings.url + '/'), { method: 'POST', headers: { Authorization: `Bearer ${settings.adminKey}` }, signal: controller.signal });
     if (!response.ok) throw new Error('Relay refused');
     const value = await response.json() as Record<string, unknown>;
