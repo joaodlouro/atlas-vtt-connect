@@ -7,6 +7,7 @@ export class MapEditView {
   private readonly events=new AbortController();
   private scene: PlayerScene|null=null;
   private matrix: EditMatrix|null=null;
+  private keyEditing=false;
   private connected=false;
   private enabled=false;
   private drag: {start:Point;matrix:EditMatrix;handle:string;pointer:number}|null=null;
@@ -36,17 +37,19 @@ export class MapEditView {
       event.preventDefault();event.stopPropagation();const step=event.shiftKey?10:1;
       const anchor=HANDLES.find(([name])=>name===handle);const start=mapPoint(this.matrix,anchor?.[1]??0,anchor?.[2]??0);
       const point={x:start.x+(event.key==='ArrowRight'?step:event.key==='ArrowLeft'?-step:0),y:start.y+(event.key==='ArrowDown'?step:event.key==='ArrowUp'?-step:0)};
-      const next=resizeMap(this.matrix,handle,point,start);if(isEditMatrix(next)&&this.send(next)){this.matrix=next;this.preview(next);this.refresh();}
+      const next=resizeMap(this.matrix,handle,point,start);if(isEditMatrix(next)){this.keyEditing=true;this.matrix=next;this.preview(next);this.refresh();}
     },{signal});
+    this.svg.addEventListener('keyup',event=>{if(this.keyEditing&&event.key.startsWith('Arrow')){this.keyEditing=false;if(this.matrix&&!this.send(this.matrix))this.cancel();}},{signal});
+    doc.defaultView?.addEventListener('blur',()=>{if(this.keyEditing)this.cancel();},{signal});
     this.svg.addEventListener('pointercancel',()=>this.cancel(),{signal});
     doc.addEventListener('keydown',event=>{if(event.key==='Escape'&&this.enabled){this.setEnabled(false);event.preventDefault();}},{signal,capture:true});
     this.refresh();
   }
   private base():EditMatrix|null {const map=this.scene?.map;return map&&map.width>0&&map.height>0?[...(map.matrix??[map.width,0,0,map.height,0,0])] as EditMatrix:null;}
-  private cancel():void {this.drag=null;this.matrix=this.base();this.preview(null);this.refresh();}
+  private cancel():void {this.drag=null;this.keyEditing=false;this.matrix=this.base();this.preview(null);this.refresh();}
   private setEnabled(value:boolean):void {this.enabled=value&&this.connected&&!!this.scene?.map.asset;this.cancel();}
   setConnected(value:boolean):void {this.connected=value;if(!value)this.setEnabled(false);this.refresh();}
-  setScene(scene:PlayerScene|null):void {if(scene?.sceneId!==this.scene?.sceneId||scene?.map.asset!==this.scene?.map.asset){this.enabled=false;this.drag=null;}this.scene=scene;if(!this.drag){this.matrix=this.base();this.preview(null);}this.refresh();}
+  setScene(scene:PlayerScene|null):void {if(scene?.sceneId!==this.scene?.sceneId||scene?.map.asset!==this.scene?.map.asset){this.enabled=false;this.drag=null;}this.scene=scene;if(!this.drag&&!this.keyEditing){this.matrix=this.base();this.preview(null);}this.refresh();}
   refresh():void {
     this.button.disabled=!this.connected||!this.scene?.map.asset;
     this.button.setAttribute('aria-pressed',String(this.enabled));this.button.textContent=this.enabled?'Concluir edição':'Editar mapa';

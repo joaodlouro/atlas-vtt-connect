@@ -15,7 +15,10 @@ export class TokenEditHandler implements SessionHandler {
   retainPlayers(known: ReadonlySet<string>): void { this.limit.retain(known); }
   onMessage(player: SessionPlayer, message: ControlMessage): void {
     if (message.type === 'map-edit') {
-      if (!this.limit.allow(player.playerId, Date.now())) return;
+      if (!this.limit.allow(player.playerId, Date.now())) {
+        if(this.options.session.canEditMap?.(message.key))this.options.session.send(player.playerId,{v:1,type:'map-edit-result',sceneId:message.sceneId,accepted:false});
+        return;
+      }
       const slot = this.options.projection.slotOf(player.playerId);
       const accepted = !!this.options.session.canEditMap?.(message.key) && !!slot?.lastSent && slot.sceneId === message.sceneId && !!slot.lastSent.map.asset && (this.options.tokens.editMap?.(slot.tab.viewId, message.matrix) ?? false);
       this.options.session.send(player.playerId,{v:1,type:'map-edit-result',sceneId:message.sceneId,accepted});
