@@ -116,3 +116,10 @@ describe('ConnectSettingsStore', () => {
     expect(plugin.saved).toHaveLength(1);
   });
 });
+
+it('migrates the previous GitHub player page to the users own published fork', async () => {
+  for(const playerPageUrl of ['https://evoljoaobento.github.io/atlas-vtt-connect/','https://evoljoaobento.github.io/atlas-vtt-connect']) {
+    const store=await ConnectSettingsStore.load(fakeDataPlugin({online:{playerPageUrl}}),memoryKeyValueStore());
+    expect(store.get().playerPageUrl).toBe('https://joaodlouro.github.io/atlas-vtt-connect/');
+  }
+});
