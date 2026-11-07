@@ -5,7 +5,7 @@
  * sends and no numbers; its wheels stand beside the token with theirs. Condition badges are Atlas's: a disc lit
  * from above in the condition's colour with its icon or initial, and its number in a pip.
  */
-import { badgePositions, CONDITION_BADGE, fitBadges } from '@atlas-vtt/shared/draw';
+import { badgePositions, CONDITION_BADGE, fitBadges, computeTokenPixelSize } from '@atlas-vtt/shared/draw';
 import { restingTokenUIScale } from '@atlas-vtt/shared/draw';
 import { BAR_SLOTS } from '@atlas-vtt/shared/rules';
 import {
@@ -108,7 +108,7 @@ export function drawTokenUi(surface: ViewSurface, token: PlayerToken, geometry: 
     surface.pop();
   }
   drawWheels(surface, token, token.wheels ?? [], geometry.size, geometry.ringRadius, geometry.cellSize, scale);
-  if (token.conditions.length > 0) drawBadges(surface, token, geometry.ringRadius, resting, look.badgeFrame ?? (() => ({ scale: 1, alpha: 1 })));
+  if (token.conditions.length > 0) drawBadges(surface, token, geometry.ringRadius, resting * geometry.size / Math.max(1, computeTokenPixelSize(geometry.cellSize, 1)), look.badgeFrame ?? (() => ({ scale: 1, alpha: 1 })));
 }
 
 function drawBars(surface: ViewSurface, bars: readonly PlayerResource[], barFrame: BarFrameOf, numbers: number, aloneScale: number): void {
