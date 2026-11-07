@@ -676,3 +676,5 @@ button:disabled { opacity: 0.5; cursor: default; }
 .turn-order select { min-height: 44px; width: 100%; background: var(--card); color: var(--text); }
 
 #menu nav button[aria-pressed="false"] { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+
+.turn-order li button { margin-left: 12px; min-height: 36px; padding: 6px 10px; }

@@ -107,3 +107,10 @@ it('adds arbitrary named turns without a token, bounds input and opens the share
   expect(updateInitiativeEntry).toHaveBeenCalledWith('turn',{initiative:19});expect(setInitiativeTrackerOpen).toHaveBeenCalledWith(true);
   expect(api.addTurn?.('view','',19)).toBe(false);expect(api.addTurn?.('view','Goblin',NaN)).toBe(false);
 });
+
+it('removes only an existing native initiative entry',()=>{
+ const removeFromInitiative=vi.fn();const state={mapLoaded:true,isMapLoading:false,lighting:{enabled:false},objects:{tokens:{}},initiative:{entries:[{id:'entry',tokenId:'manual'}]},removeFromInitiative};
+ const api=stockTokensApi({view:()=>({viewId:'v',atlasStore:{getState:()=>state}}) as unknown as TokenView,mapSize:()=>({width:1,height:1}),dynamicLighting:()=>false});
+ expect(api.removeTurn?.('v','missing')).toBe(false);expect(removeFromInitiative).not.toHaveBeenCalled();
+ expect(api.removeTurn?.('v','entry')).toBe(true);expect(removeFromInitiative).toHaveBeenCalledWith('entry');
+});

@@ -1,3 +1,4 @@
+import { conditionName } from '../src/app/online/scene/conditionNames';
 import { isTokenEdit, type TokenEdit } from '../src/app/online/control/tokenEdits';
 import type { PlayerToken } from '../src/app/online/scene/sceneTypes';
 import type { TokenSheet } from '../src/app/online/tools/sheets';
@@ -60,11 +61,11 @@ export function openTokenEditor(doc: Document, token: PlayerToken, sheet: TokenS
   for (const condition of token.conditionChoices ?? token.conditions) {
     const label = doc.createElement('label');
     const input = doc.createElement('input'); input.type = 'checkbox'; input.checked = token.conditions.some((active) => active.id === condition.id);
-    label.append(input, condition.name ?? condition.id); group.append(label); conditionInputs.push([condition.id, input]);
+    label.append(input, conditionName(condition.name ?? condition.id)); group.append(label); conditionInputs.push([condition.id, input]);
   }
   form.append(group);
   const conditions = doc.createElement('p');
-  conditions.textContent = token.conditions.length ? token.conditions.map((condition) => condition.name).join(', ') : 'Sem condições ativas';
+  conditions.textContent = token.conditions.length ? token.conditions.map((condition) => conditionName(condition.name ?? condition.id)).join(', ') : 'Sem condições ativas';
   form.append(conditions);
   const note = doc.createElement('p'); note.setAttribute('role', 'status'); form.append(note);
   const actions = doc.createElement('div'); actions.className = 'token-editor__steps';
@@ -94,7 +95,7 @@ export function openTokenEditor(doc: Document, token: PlayerToken, sheet: TokenS
       if (edit.showHpBar !== undefined) token.showHpBar = edit.showHpBar;
       if (edit.statusText !== undefined) token.statusText = edit.statusText;
       if (edit.conditions) token.conditions = edit.conditions.map((id) => (token.conditionChoices ?? token.conditions).find((item) => item.id === id) ?? { id, value: null });
-      conditions.textContent = token.conditions.length ? token.conditions.map((condition) => condition.name ?? condition.id).join(', ') : 'Sem condições ativas';
+      conditions.textContent = token.conditions.length ? token.conditions.map((condition) => conditionName(condition.name ?? condition.id)).join(', ') : 'Sem condições ativas';
     }
     if (embedded) note.textContent = 'Alteração enviada ao mestre.'; else close();
   });

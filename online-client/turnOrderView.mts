@@ -1,3 +1,4 @@
+import { isManualTurn } from '../src/app/online/control/manualTurns';
 import type { PlayerScene } from '../src/app/online/scene/sceneTypes';
 
 /** Free names and values are stored in the shared native initiative tracker. */
@@ -7,7 +8,7 @@ export class TurnOrderView {
   private readonly roll: HTMLInputElement;
   private readonly list: HTMLOListElement;
   private readonly note: HTMLElement;
-  constructor(private readonly panel: HTMLElement, button: HTMLButtonElement, send: (id: string, value: number) => boolean) {
+  constructor(private readonly panel: HTMLElement, button: HTMLButtonElement, send: (id: string, value: number) => boolean, private readonly remove?: (id: string) => boolean) {
     const doc = panel.ownerDocument;
     const title = doc.createElement('h2'); title.textContent = 'Ordem de turnos';
     const close = doc.createElement('button'); close.type = 'button'; close.textContent = 'Fechar';
@@ -32,7 +33,13 @@ export class TurnOrderView {
     this.list.replaceChildren();
     const initiative = this.scene?.initiative;
     for (const entry of [...(initiative?.entries ?? [])].sort((a, b) => b.initiative - a.initiative)) {
-      const row = this.list.ownerDocument.createElement('li'); row.textContent = `${entry.awaiting ? '—' : entry.initiative} · ${entry.name ?? scene?.tokens[entry.tokenId]?.name ?? 'Personagem'}${entry.isActive && initiative?.active ? ' ← turno atual' : ''}`; this.list.append(row);
+      const row = this.list.ownerDocument.createElement('li'); row.textContent = `${entry.awaiting ? '—' : entry.initiative} · ${entry.name ?? scene?.tokens[entry.tokenId]?.name ?? 'Personagem'}${entry.isActive && initiative?.active ? ' ← turno atual' : ''}`;
+      if (this.remove && (isManualTurn(entry.tokenId) || _controlled.includes(entry.tokenId))) {
+        const button = row.ownerDocument.createElement('button'); button.type = 'button'; button.className = 'secondary'; button.textContent = 'Excluir'; button.setAttribute('aria-label', `Excluir turno de ${entry.name ?? 'Personagem'}`);
+        button.addEventListener('click', () => { this.note.textContent = this.remove?.(entry.id) ? 'Exclusão enviada ao mestre.' : 'Não foi possível excluir este turno.'; });
+        row.append(button);
+      }
+      this.list.append(row);
     }
     if (!initiative?.entries.length) { const row = this.list.ownerDocument.createElement('li'); row.textContent = 'Nenhuma iniciativa registrada.'; this.list.append(row); }
   }

@@ -337,7 +337,7 @@ describe('projectForPlayers fix round 1', () => {
       { id: 'scared', name: 'Scared', color: '#123456', icon: 'terror' }, { id: 'weird', name: 'Weird', color: '#123456', icon: 'not-an-icon' },
     ] as never;
     expect(projectForPlayers(withTokens({ hero: named }), context({ conditions })).tokens.hero?.conditions).toEqual([
-      { id: 'prone', value: 2, name: 'Prone', color: '#AA3300' },
+      { id: 'prone', value: 2, name: 'Caído', color: '#AA3300' },
       { id: 'scared', value: null, name: 'Scared', color: '#123456', icon: 'terror' },
     ]);
     // A collection not known yet: every id, unnamed.

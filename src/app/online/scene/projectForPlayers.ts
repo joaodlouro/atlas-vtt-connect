@@ -1,3 +1,4 @@
+import { conditionName } from './conditionNames';
 /**
  * The only place that decides what leaves the GM's machine: the presented
  * scene as online players may see it, exactly what the local player window
@@ -454,7 +455,7 @@ function projectConditions(token: TokenEntity, definitions: readonly ConditionDe
       // Named, coloured and drawn as the GM's collection defines it, for the badge and the player's hover card.
       const definition = definitions.find((candidate) => candidate.id === id);
       const name = typeof definition?.name === 'string' ? definition.name.trim().slice(0, SCENE_LIMITS.conditionName) : '';
-      if (name) condition.name = name;
+      if (name) condition.name = conditionName(name);
       if (typeof definition?.color === 'string' && CONDITION_COLOR.test(definition.color)) condition.color = definition.color;
       if (typeof definition?.icon === 'string' && Object.hasOwn(WIDGET_ICON_PATHS, definition.icon)) condition.icon = definition.icon;
       return condition;

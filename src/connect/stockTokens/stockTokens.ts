@@ -48,6 +48,7 @@ interface TokenScene {
   initiative?: { entries: { id: string; tokenId: string }[] };
   setInitiativeTrackerOpen?: (open: boolean) => void;
   updateInitiativeEntry?: (id: string, updates: Record<string, unknown>) => void;
+  removeFromInitiative?: (id: string) => void;
   addToInitiative?: (entry: Record<string, unknown>) => string;
   addTokens?: (entries: Record<string, unknown>[]) => string[];
 }
@@ -163,6 +164,12 @@ export function stockTokensApi(deps: StockTokensDeps): TokensApi & CopyableToken
         updates.overriddenMax = [...new Set([...(Array.isArray(token.overriddenMax) ? (token.overriddenMax as unknown[]).filter((key): key is string => typeof key === 'string') : []), 'hp'])];
       }
       if (Object.keys(updates).length) state.updateToken(tokenId, updates);
+      return true;
+    },
+    removeTurn: (viewId: string, entryId: string): boolean => {
+      const state = deps.view(viewId)?.atlasStore.getState();
+      if (!state?.mapLoaded || state.isMapLoading || state.remoteView != null || state.isDragging || !state.removeFromInitiative || !state.initiative?.entries.some(entry => entry.id === entryId)) return false;
+      state.removeFromInitiative(entryId);
       return true;
     },
     addTurn: (viewId: string, name: string, value: number): boolean => {

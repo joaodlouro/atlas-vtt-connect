@@ -163,6 +163,13 @@ export class PlayerSession {
     return true;
   }
 
+  removeTurn(entryId: string): boolean {
+    const scene = this.inbox.scene;
+    if (this.finished || this.state.status !== 'admitted' || !this.link || !scene || this.paused || !scene.initiative?.entries.some(entry => entry.id === entryId)) return false;
+    this.link.send('control', encodeControl({ v: 1, type: 'turn-remove', sceneId: scene.sceneId, entryId }));
+    return true;
+  }
+
   sendTurn(name: string, value: number): boolean {
     const scene = this.inbox.scene;
     if (this.finished || this.state.status !== 'admitted' || !this.link || !scene || this.paused || !isTurnName(name) || !isTurnValue(value)) return false;

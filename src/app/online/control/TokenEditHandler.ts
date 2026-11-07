@@ -1,3 +1,4 @@
+import { isManualTurn } from './manualTurns';
 import type { SessionHandler, SessionPlayer } from '../GmSession';
 import type { ControlMessage } from '../protocol';
 import { RateLimit } from '../rateLimit';
@@ -13,6 +14,14 @@ export class TokenEditHandler implements SessionHandler {
   stop(): void { this.stopSession?.(); this.stopSession = null; }
   retainPlayers(known: ReadonlySet<string>): void { this.limit.retain(known); }
   onMessage(player: SessionPlayer, message: ControlMessage): void {
+    if (message.type === 'turn-remove') {
+      if (!this.limit.allow(player.playerId, Date.now())) return;
+      const slot = this.options.projection.slotOf(player.playerId);
+      const entry = slot?.lastSent?.initiative?.entries.find(candidate => candidate.id === message.entryId);
+      const current = slot ? this.options.projection.shownSnapshot(slot.sceneId)?.initiative?.entries.find(candidate => candidate.id === message.entryId) : null;
+      if (slot?.sceneId === message.sceneId && entry && current?.tokenId === entry.tokenId && (isManualTurn(entry.tokenId) || this.options.control.controls(player.playerId, entry.tokenId))) this.options.tokens.removeTurn?.(slot.tab.viewId, entry.id);
+      return;
+    }
     if (message.type === 'turn-add') {
       if (!this.limit.allow(player.playerId, Date.now())) return;
       const slot = this.options.projection.slotOf(player.playerId);
