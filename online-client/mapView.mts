@@ -1,3 +1,5 @@
+import { MapEditView } from './mapEditView.mts';
+import type { EditMatrix } from '../src/app/online/control/mapEdits';
 import { openTokenEditor } from './tokenEditor.mts';
 import type { TokenEdit } from '../src/app/online/control/tokenEdits';
 // online-client/mapView.mts
@@ -68,6 +70,7 @@ export interface MapViewOptions {
   viewButtons: HTMLElement;
   followButton: HTMLButtonElement;
   fitButton: HTMLButtonElement;
+  mapEdit?: { button: HTMLButtonElement; send(matrix: EditMatrix): boolean };
   tokenPanel?: HTMLElement;
   onTokenSelected?: () => void;
   /** Sends one drop of a controlled token; false when it could not be sent. */
@@ -140,6 +143,8 @@ export class MapView {
   /** The token the player selected with a click (Atlas's selection): its UI grows and shows its numbers. */
   private selected: string | null = null;
   private copied: string | null = null;
+  private mapPreview: EditMatrix | null = null;
+  private mapEditor: MapEditView | null = null;
   private editorSignature = '';
   private closeEditor: (() => void) | null = null;
   private controlled: ReadonlySet<string> = new Set();
@@ -204,6 +209,8 @@ export class MapView {
     this.initiative = options.initiative ? new InitiativeView({ panel: options.initiative, images: options.images, onFind: (tokenId) => this.findToken(tokenId) }) : null;
     this.preview = options.statblockPreview ? new StatblockPreviewView(options.statblockPreview) : null;
     options.canvas.dataset.tool = this.shownTool.tool;
+    const mapEdit=options.mapEdit;
+    if(mapEdit)this.mapEditor=new MapEditView(options.canvas,mapEdit.button,p=>this.camera.toWorld(p),p=>this.camera.toScreen(p),matrix=>{this.mapPreview=matrix;this.renderer.setScene(matrix&&this.scene?{...this.scene,map:{...this.scene.map,matrix}}:this.scene);},matrix=>mapEdit.send(matrix),(point,dy,mode)=>this.input.wheel(point,dy,mode));
     this.bind();
     this.measure();
     // Tokens are drawn with Atlas's stand-in ring until the ring texture has loaded: then once more with it.
@@ -223,8 +230,9 @@ export class MapView {
     if (this.scene && scene && this.scene.sceneId !== scene.sceneId) this.crossfade();
     this.hasScene = scene !== null;
     this.scene = scene;
+    this.mapEditor?.setScene(scene);
     this.camera.setScene(scene);
-    this.renderer.setScene(scene);
+    this.renderer.setScene(this.mapPreview&&scene?{...scene,map:{...scene.map,matrix:this.mapPreview}}:scene);
     this.moves.setScene(scene);
     this.tools.setScene(scene);
     this.updateButtons();
@@ -257,6 +265,7 @@ export class MapView {
   /** Whether the player is admitted: only then can tokens be dragged and tools send. */
   setConnected(connected: boolean): void {
     this.connected = connected;
+    this.mapEditor?.setConnected(connected);
     if (!connected) this.copied = null;
     this.moves.setConnected(connected);
     this.tools.setConnected(connected);
@@ -370,6 +379,7 @@ export class MapView {
 
   /** The session is over: stops drawing and frees the fog image. The page does not use the view again. */
   dispose(): void {
+    this.mapEditor?.dispose();
     this.closeEditor?.();
     this.transition?.cancel();
     this.listeners.abort();
@@ -493,6 +503,7 @@ export class MapView {
   }
 
   private cameraChanged(): void {
+    this.mapEditor?.refresh();
     this.renderer.invalidate();
     this.updateButtons();
   }
@@ -652,6 +663,13 @@ export class MapView {
   private editAt(point: ScreenPoint): boolean {
     const id = this.scene ? tokenAt(this.scene, this.moves.overlay().positions, this.camera.toWorld(point)) : null;
     return id !== null && this.editToken(id);
+  }
+
+  mapEditResult(sceneId: string, accepted: boolean): void {
+    if(this.scene?.sceneId!==sceneId)return;
+    if(!accepted)this.mapEditor?.reject();
+    this.options.notice.textContent=accepted?'Ajuste do mapa salvo na cena.':'O mestre recusou o ajuste do mapa. Confira o acesso de edição e a cena ativa.';
+    this.options.notice.hidden=false;
   }
 
   selectToken(id: string): void {

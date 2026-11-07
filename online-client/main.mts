@@ -78,6 +78,9 @@ function updateTokenChoices(): void {
   }
   turns.update(scene, controlledTokens);
 }
+const editorKey=new URLSearchParams(location.hash.slice(1)).get('edit');
+const canEditMap=editorKey!==null&&/^[A-Za-z0-9_-]{43}$/.test(editorKey);
+element('map-edit-button').hidden=!canEditMap;
 const surface = createCanvasSurface(canvas);
 /** Set once the player joins; until then a drop, a laser or a roll has nowhere to go. */
 let session: PlayerSession | null = null;
@@ -85,6 +88,7 @@ let session: PlayerSession | null = null;
 // it asks the loader every time, so a released image is never drawn.
 const map = surface
   ? new MapView({
+    ...(canEditMap ? {mapEdit:{button:element<HTMLButtonElement>('map-edit-button'),send:(matrix:import('../src/app/online/control/mapEdits').EditMatrix)=>session?.sendMapEdit(editorKey,matrix)??false}} : {}),
     tokenPanel: element('token-panel'), onTokenSelected: () => { element('token-tab').hidden = false; showTokenTab(true); menu.setOpen(true); },
     canvas, surface, images: (id) => loader.image(id),
     viewButtons: element('view-buttons'), followButton: element('follow-gm'), fitButton: element('fit-map'),
@@ -339,6 +343,7 @@ if (!target) {
         log.event('control', { tokens: tokenIds.length });
         map.setControlled(tokenIds);
       },
+      onMapEditResult: (sceneId,accepted) => map.mapEditResult(sceneId,accepted),
       onMoveRefused: (tokenId) => {
         log.event('move refused', { tokenId });
         map.moveRefused(tokenId);

@@ -111,6 +111,8 @@ export class OnlineSessionService {
     this.sharingHooks = hooks;
   }
 
+  get mapEditorLink(): string | null { return this.hosted ? this.hosted.joinUrl + '&edit=' + this.hosted.session.mapEditorKey : null; }
+
   get session(): GmSession | null {
     return this.hosted?.session ?? null;
   }

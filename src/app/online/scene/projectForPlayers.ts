@@ -1,3 +1,4 @@
+import { isEditMatrix } from '../control/mapEdits';
 import { conditionName } from './conditionNames';
 /**
  * The only place that decides what leaves the GM's machine: the presented
@@ -126,9 +127,13 @@ export function projectForPlayers(state: ProjectionInput, context: ProjectionCon
   const initiative = projectInitiative(state, listedTokenIds(seen, objects?.tokens, closed), context.rules, context.resources ?? NO_RESOURCES, initiativeRules, context.resourceShows ?? COLLECTION_SHOWS);
   const tokens = withTokenLooks(withCombatantSides(seen, initiative, objects?.tokens), state);
   const fog = projectFog(objects?.fog, memo);
+  const savedLayouts = (state.grid as { rpgMapLayouts?: Record<string,unknown> } | null)?.rpgMapLayouts;
+  const layout = state.background && savedLayouts && Object.hasOwn(savedLayouts,state.background) ? savedLayouts[state.background] : null;
+  const map = projectMap(curtained ? null : state.background, cellSize, context, curtained ? undefined : (objects as { liquids?: unknown } | undefined)?.liquids);
+  if (!curtained && map.asset && isEditMatrix(layout)) map.matrix = [...layout];
   return {
     sceneId: context.sceneId,
-    map: projectMap(curtained ? null : state.background, cellSize, context, curtained ? undefined : (objects as { liquids?: unknown } | undefined)?.liquids),
+    map,
     grid: curtained ? null : projectGrid(state.grid, context.rules),
     tokens,
     // The darkness goes last, over the GM's fog: what the GM erased stays dark where the lighting hides it.

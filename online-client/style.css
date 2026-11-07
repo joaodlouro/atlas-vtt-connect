@@ -678,3 +678,10 @@ button:disabled { opacity: 0.5; cursor: default; }
 #menu nav button[aria-pressed="false"] { background: var(--card); color: var(--text); border: 1px solid var(--border); }
 
 .turn-order li button { margin-left: 12px; min-height: 36px; padding: 6px 10px; }
+
+.map-edit-overlay { position: fixed; z-index: 0; pointer-events: none; touch-action: none; overflow: visible; }
+.map-edit-outline { fill: rgb(124 92 255 / 5%); stroke: #7c5cff; stroke-width: 2px; stroke-dasharray: 8 4; pointer-events: all; cursor: move; }
+.map-edit-handle { fill: white; stroke: #7c5cff; stroke-width: 2px; pointer-events: all; cursor: nwse-resize; }
+.map-edit-handle[data-handle="n"],.map-edit-handle[data-handle="s"] { cursor: ns-resize; }
+.map-edit-handle[data-handle="e"],.map-edit-handle[data-handle="w"] { cursor: ew-resize; }
+.map-edit-handle[data-handle="ne"],.map-edit-handle[data-handle="sw"] { cursor: nesw-resize; }

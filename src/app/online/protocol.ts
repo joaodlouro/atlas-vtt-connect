@@ -4,6 +4,7 @@ import { isTokenEdit, type TokenEdit } from './control/tokenEdits';
  * imports nothing but the scene wire format beside it: no Obsidian, no PIXI, no PeerJS.
  */
 import type { SceneCamera } from './scene/sceneCamera';
+import { isEditMatrix, type EditMatrix } from './control/mapEdits';
 import { isTurnName, isTurnValue } from './control/manualTurns';
 import type { DiceSelection } from '@atlas-vtt/shared/rules';
 import type { PlayerDrawing, PlayerFogOp, PlayerSceneBody, ScenePatchBody, ScenePoint } from './scene/sceneTypes';
@@ -102,6 +103,8 @@ export type ControlMessage =
   | SceneLookMessage
   /** GM to one player: the tokens that player may move, for this session. */
   | { v: 1; type: 'turn-remove'; sceneId: string; entryId: string }
+  | { v: 1; type: 'map-edit-result'; sceneId: string; accepted: boolean }
+  | { v: 1; type: 'map-edit'; sceneId: string; key: string; matrix: EditMatrix }
   | { v: 1; type: 'turn-add'; sceneId: string; name: string; value: number }
   | { v: 1; type: 'token-control'; tokenIds: string[] }
   /** Player to GM, once per drop: where the player let go of one of their tokens, in world units. */
@@ -147,7 +150,7 @@ export type ControlMessage =
 
 /** What an admitted player may send besides `ping`, `pong` and `bye`; the GM drops every other type from a player. */
 export const PLAYER_MESSAGE_TYPES: ReadonlySet<ControlMessage['type']> = new Set<ControlMessage['type']>([
-  'turn-remove', 'turn-add', 'scene-resync', 'token-move', 'token-copy', 'token-edit', 'dice-roll', 'dice-result', 'laser', 'sheet-roll', 'map-ping', 'map-template', 'note-request', 'board-request',
+  'map-edit', 'turn-remove', 'turn-add', 'scene-resync', 'token-move', 'token-copy', 'token-edit', 'dice-roll', 'dice-result', 'laser', 'sheet-roll', 'map-ping', 'map-template', 'note-request', 'board-request',
 ]);
 
 export type Decoded =
@@ -197,6 +200,8 @@ const VALIDATORS: Record<ControlMessage['type'], (m: Fields) => boolean> = {
   'scene-state': (m) => isSceneState(m),
   'scene-look': (m) => isSceneLook(m),
   'turn-remove': (m) => isSceneId(m.sceneId) && isSceneId(m.entryId),
+  'map-edit-result': (m) => isSceneId(m.sceneId) && typeof m.accepted === 'boolean',
+  'map-edit': (m) => isSceneId(m.sceneId) && typeof m.key === 'string' && /^[A-Za-z0-9_-]{43}$/.test(m.key) && isEditMatrix(m.matrix),
   'turn-add': (m) => isSceneId(m.sceneId) && isTurnName(m.name) && isTurnValue(m.value),
   'token-control': (m) => Array.isArray(m.tokenIds) && m.tokenIds.length <= MAX_CONTROLLED_TOKENS
     && m.tokenIds.every((id) => isSceneId(id)),

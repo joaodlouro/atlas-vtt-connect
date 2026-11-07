@@ -1,3 +1,5 @@
+import { isEditMatrix, type EditMatrix } from '../../app/online/control/mapEdits';
+import { backgroundOfLevel } from '../stockLevels';
 import { isTurnName, isTurnValue } from '../../app/online/control/manualTurns';
 import { isTokenEdit, type TokenEdit } from '../../app/online/control/tokenEdits';
 /**
@@ -43,6 +45,8 @@ interface TokenScene {
   /** Atlas 0.10's levels (floors) and the one this view shows: only that floor's walls stop a token. */
   levels?: unknown;
   viewedLevel?: unknown;
+  background?: string | null;
+  setGrid?: (grid: Record<string, unknown>) => void;
   dropTokens?: (positions: readonly TokenPlace[]) => void;
   updateToken?: (id: string, changes: Record<string, unknown>) => void;
   initiative?: { entries: { id: string; tokenId: string }[] };
@@ -164,6 +168,16 @@ export function stockTokensApi(deps: StockTokensDeps): TokensApi & CopyableToken
         updates.overriddenMax = [...new Set([...(Array.isArray(token.overriddenMax) ? (token.overriddenMax as unknown[]).filter((key): key is string => typeof key === 'string') : []), 'hp'])];
       }
       if (Object.keys(updates).length) state.updateToken(tokenId, updates);
+      return true;
+    },
+    editMap: (viewId: string, matrix: EditMatrix): boolean => {
+      const state = deps.view(viewId)?.atlasStore.getState();
+      if (!isEditMatrix(matrix) || !state?.mapLoaded || state.isMapLoading || state.remoteView != null || state.isDragging || !state.setGrid || !state.grid) return false;
+      const path = backgroundOfLevel(state.background ?? null,state.levels,state.viewedLevel);
+      if (!path) return false;
+      const grid = state.grid as Record<string, unknown>;
+      const layouts = isObject(grid.rpgMapLayouts) ? grid.rpgMapLayouts : {};
+      state.setGrid({...grid,rpgMapLayouts:{...layouts,[path]:[...matrix]}});
       return true;
     },
     removeTurn: (viewId: string, entryId: string): boolean => {

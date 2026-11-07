@@ -476,3 +476,10 @@ describe('explicit token HP bar and status', () => {
     expect(legacy.tokens.hero?.resources).toHaveLength(2);
   });
 });
+
+it('shares persisted web map layout and hides it behind the curtain',()=>{
+ const initial=gmState();const matrix=[1200,0,0,600,-100,50];
+ const state={...initial,grid:{...initial.grid!,rpgMapLayouts:{'atlas-vtt/assets/lair.png':matrix}} as unknown as NonNullable<SceneSnapshot['grid']>};
+ expect(projectForPlayers(state,context()).map.matrix).toEqual(matrix);
+ expect(projectForPlayers(state,context({rules:{...ALL_ON,curtain:true}})).map.matrix).toBeUndefined();
+});

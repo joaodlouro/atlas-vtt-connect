@@ -5,6 +5,7 @@ import { isTokenEdit, type TokenEdit } from './control/tokenEdits';
  * the player list, and reconnect after a drop. Shared with the web player page,
  * so it imports nothing from Obsidian.
  */
+import { isEditMatrix, type EditMatrix } from './control/mapEdits';
 import { isTurnName, isTurnValue } from './control/manualTurns';
 import type { DiceSelection } from '@atlas-vtt/shared/rules';
 import { decodeControl, encodeControl, type DeviceProof, type PresencePlayer, type TableProof } from './protocol';
@@ -70,6 +71,7 @@ export interface PlayerSessionOptions {
   onControl?(tokenIds: readonly string[]): void;
   /** The GM refused this player's move of the token. */
   onMoveRefused?(tokenId: string): void;
+  onMapEditResult?(sceneId: string, accepted: boolean): void;
   /** The scene shown was paused (the GM is on another scene) or is live again. */
   onSceneState?(paused: boolean): void;
   /** The dice look the GM's collection throws in for the scene shown (a full look id), or null; the web page ignores it. */
@@ -161,6 +163,12 @@ export class PlayerSession {
     if (this.finished || this.state.status !== 'admitted' || !this.link || !scene || !this.controlled.includes(tokenId)) return false;
     this.link.send('control', encodeControl({ v: 1, type: 'token-copy', sceneId: scene.sceneId, tokenId }));
     return true;
+  }
+
+  sendMapEdit(key: string, matrix: EditMatrix): boolean {
+    const scene = this.inbox.scene;
+    if (this.finished || this.state.status !== 'admitted' || !this.link || !scene || this.paused || !isEditMatrix(matrix) || !/^[A-Za-z0-9_-]{43}$/.test(key)) return false;
+    this.link.send('control', encodeControl({v:1,type:'map-edit',sceneId:scene.sceneId,key,matrix})); return true;
   }
 
   removeTurn(entryId: string): boolean {
@@ -338,6 +346,9 @@ export class PlayerSession {
         break;
       case 'token-control':
         this.setControlled(message.tokenIds);
+        break;
+      case 'map-edit-result':
+        this.options.onMapEditResult?.(message.sceneId,message.accepted);
         break;
       case 'token-move-refused':
         this.options.onMoveRefused?.(message.tokenId);
