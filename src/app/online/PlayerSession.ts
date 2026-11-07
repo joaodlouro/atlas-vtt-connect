@@ -5,6 +5,7 @@ import { isTokenEdit, type TokenEdit } from './control/tokenEdits';
  * the player list, and reconnect after a drop. Shared with the web player page,
  * so it imports nothing from Obsidian.
  */
+import { isTurnName, isTurnValue } from './control/manualTurns';
 import type { DiceSelection } from '@atlas-vtt/shared/rules';
 import { decodeControl, encodeControl, type DeviceProof, type PresencePlayer, type TableProof } from './protocol';
 import { PlayerSceneInbox } from './playerSessionScene';
@@ -159,6 +160,13 @@ export class PlayerSession {
     const scene = this.inbox.scene;
     if (this.finished || this.state.status !== 'admitted' || !this.link || !scene || !this.controlled.includes(tokenId)) return false;
     this.link.send('control', encodeControl({ v: 1, type: 'token-copy', sceneId: scene.sceneId, tokenId }));
+    return true;
+  }
+
+  sendTurn(name: string, value: number): boolean {
+    const scene = this.inbox.scene;
+    if (this.finished || this.state.status !== 'admitted' || !this.link || !scene || this.paused || !isTurnName(name) || !isTurnValue(value)) return false;
+    this.link.send('control', encodeControl({ v: 1, type: 'turn-add', sceneId: scene.sceneId, name: name.trim(), value }));
     return true;
   }
 

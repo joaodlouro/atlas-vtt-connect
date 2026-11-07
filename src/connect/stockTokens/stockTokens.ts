@@ -1,3 +1,4 @@
+import { isTurnName, isTurnValue } from '../../app/online/control/manualTurns';
 import { isTokenEdit, type TokenEdit } from '../../app/online/control/tokenEdits';
 /**
  * `tokens` on a stock Atlas VTT, which has no extension API: where a dropped token lands and moving tokens for
@@ -45,6 +46,7 @@ interface TokenScene {
   dropTokens?: (positions: readonly TokenPlace[]) => void;
   updateToken?: (id: string, changes: Record<string, unknown>) => void;
   initiative?: { entries: { id: string; tokenId: string }[] };
+  setInitiativeTrackerOpen?: (open: boolean) => void;
   updateInitiativeEntry?: (id: string, updates: Record<string, unknown>) => void;
   addToInitiative?: (entry: Record<string, unknown>) => string;
   addTokens?: (entries: Record<string, unknown>[]) => string[];
@@ -161,6 +163,14 @@ export function stockTokensApi(deps: StockTokensDeps): TokensApi & CopyableToken
         updates.overriddenMax = [...new Set([...(Array.isArray(token.overriddenMax) ? (token.overriddenMax as unknown[]).filter((key): key is string => typeof key === 'string') : []), 'hp'])];
       }
       if (Object.keys(updates).length) state.updateToken(tokenId, updates);
+      return true;
+    },
+    addTurn: (viewId: string, name: string, value: number): boolean => {
+      const state = deps.view(viewId)?.atlasStore.getState();
+      if (!isTurnName(name) || !isTurnValue(value) || !state?.mapLoaded || state.isMapLoading || state.remoteView != null || state.isDragging || !state.addToInitiative || !state.updateInitiativeEntry || (state.initiative?.entries.length ?? 0) >= 64) return false;
+      const id = state.addToInitiative({ tokenId: `rpg-turn-${crypto.randomUUID()}`, name: name.trim(), imagePath: '', initiative: value === 0 ? 1 : 0, initiativeModifier: 0, isNPC: true });
+      state.updateInitiativeEntry(id, { initiative: value });
+      state.setInitiativeTrackerOpen?.(true);
       return true;
     },
     duplicate: (viewId: string, tokenId: string): string | null => {

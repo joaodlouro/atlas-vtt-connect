@@ -16,19 +16,20 @@ function socketUrl(base: string, room: string, role: 'host' | 'player', key: str
 class RelayLink implements PeerLink {
   readonly inbox = new Inbox();
   private readonly closes = new Set<() => void>();
-  private readonly drains = new Set<number>();
+  private readonly drains = new Map<number, { above: boolean; threshold: number }>();
   private closed = false;
   constructor(readonly remoteId: string, private readonly socket: () => WebSocket | null, private readonly sendPacket: (packet: RelayPacket) => void, private readonly end: () => void) {}
-  send(channel: Channel, data: string | ArrayBuffer): void { if (!this.closed) this.sendPacket({ kind: 'data', peerId: this.remoteId, channel, data }); }
+  send(channel: Channel, data: string | ArrayBuffer): void { if (!this.closed) { this.sendPacket({ kind: 'data', peerId: this.remoteId, channel, data }); for (const state of this.drains.values()) state.above ||= this.bufferedAmount(channel) > state.threshold; } }
   bufferedAmount(_channel: Channel): number { return this.socket()?.bufferedAmount ?? 0; }
   onDrain(channel: Channel, threshold: number, cb: () => void): Unsubscribe {
-    let above = this.bufferedAmount(channel) > threshold;
+    const state = { above: this.bufferedAmount(channel) > threshold, threshold };
     const timer = window.setInterval(() => {
       const next = this.bufferedAmount(channel) > threshold;
-      if (above && !next) cb();
-      above = next;
+      const drained = state.above && !next;
+      state.above = next;
+      if (drained) cb();
     }, 50);
-    this.drains.add(timer);
+    this.drains.set(timer, state);
     return () => { window.clearInterval(timer); this.drains.delete(timer); };
   }
   onMessage(cb: (channel: Channel, data: unknown) => void): Unsubscribe { return this.inbox.subscribe(cb); }
@@ -37,7 +38,7 @@ class RelayLink implements PeerLink {
   lost(): void {
     if (this.closed) return;
     this.closed = true;
-    for (const timer of this.drains) window.clearInterval(timer);
+    for (const timer of this.drains.keys()) window.clearInterval(timer);
     this.drains.clear(); for (const cb of this.closes) cb(); this.closes.clear();
   }
 }

@@ -1,10 +1,9 @@
 import type { PlayerScene } from '../src/app/online/scene/sceneTypes';
 
-/** Uses Atlas's shared initiative tracker; only owned tokens can submit their roll. */
+/** Free names and values are stored in the shared native initiative tracker. */
 export class TurnOrderView {
   private scene: PlayerScene | null = null;
-  private controlled: readonly string[] = [];
-  private readonly choice: HTMLSelectElement;
+  private readonly choice: HTMLInputElement;
   private readonly roll: HTMLInputElement;
   private readonly list: HTMLOListElement;
   private readonly note: HTMLElement;
@@ -16,28 +15,20 @@ export class TurnOrderView {
     button.addEventListener('click', () => open(panel.hidden)); close.addEventListener('click', () => open(false));
     doc.addEventListener('keydown', (event) => { if (event.key === 'Escape') open(false); });
     const form = doc.createElement('form');
-    this.choice = doc.createElement('select'); this.choice.setAttribute('aria-label', 'Personagem para iniciativa');
+    this.choice = doc.createElement('input'); this.choice.type = 'text'; this.choice.maxLength = 120; this.choice.required = true; this.choice.placeholder = 'Nome'; this.choice.setAttribute('aria-label', 'Nome para iniciativa');
     this.roll = doc.createElement('input'); this.roll.type = 'number'; this.roll.min = '-1000'; this.roll.max = '1000'; this.roll.step = '1'; this.roll.required = true; this.roll.placeholder = 'Resultado da iniciativa'; this.roll.setAttribute('aria-label', 'Resultado da iniciativa');
-    const submit = doc.createElement('button'); submit.textContent = 'Registrar iniciativa'; submit.type = 'submit';
+    const submit = doc.createElement('button'); submit.textContent = 'Adicionar turno'; submit.type = 'submit';
     this.note = doc.createElement('p'); this.note.setAttribute('role', 'status');
     this.list = doc.createElement('ol');
     form.append(this.choice, this.roll, submit); panel.append(title, close, form, this.note, this.list);
     form.addEventListener('submit', (event) => {
       event.preventDefault(); const value = Number(this.roll.value);
-      if (!this.roll.value || !Number.isInteger(value) || value < -1000 || value > 1000 || !this.controlled.includes(this.choice.value)) return;
-      this.note.textContent = send(this.choice.value, value) ? 'Iniciativa enviada ao mestre.' : 'Não foi possível enviar. Confira a conexão e o controle do token.';
+      if (!this.roll.value || !Number.isInteger(value) || value < -1000 || value > 1000 || !this.choice.value.trim()) return;
+      this.note.textContent = send(this.choice.value.trim(), value) ? 'Iniciativa enviada ao mestre.' : 'Não foi possível enviar. Confira a conexão e o controle do token.';
     });
   }
-  update(scene: PlayerScene | null, controlled: readonly string[]): void {
-    this.scene = scene; this.controlled = controlled;
-    const selected = this.choice.value;
-    this.choice.replaceChildren();
-    for (const id of controlled) {
-      const token = scene?.tokens[id]; if (!token) continue;
-      const option = this.choice.ownerDocument.createElement('option'); option.value = id; option.textContent = token.name ?? 'Personagem'; this.choice.append(option);
-    }
-    if (controlled.includes(selected)) this.choice.value = selected;
-    this.choice.disabled = this.choice.options.length === 0;
+  update(scene: PlayerScene | null, _controlled: readonly string[]): void {
+    this.scene = scene;
     this.list.replaceChildren();
     const initiative = this.scene?.initiative;
     for (const entry of [...(initiative?.entries ?? [])].sort((a, b) => b.initiative - a.initiative)) {

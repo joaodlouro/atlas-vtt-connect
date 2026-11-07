@@ -9,7 +9,7 @@ import { heldOffTurn } from './turnHold';
 import type { TokenControl } from './TokenControl';
 
 /** Optional Connect operation on stock Atlas; API hosts without it refuse copies. */
-export type CopyableTokens = Pick<TokensApi, 'move'> & { duplicate?(viewId: string, tokenId: string): string | null; edit?(viewId: string, tokenId: string, edit: TokenEdit): boolean };
+export type CopyableTokens = Pick<TokensApi, 'move'> & { duplicate?(viewId: string, tokenId: string): string | null; addTurn?(viewId: string, name: string, value: number): boolean; edit?(viewId: string, tokenId: string, edit: TokenEdit): boolean };
 
 export interface TokenCopyHandlerOptions {
   session: SceneSession;

@@ -13,6 +13,12 @@ export class TokenEditHandler implements SessionHandler {
   stop(): void { this.stopSession?.(); this.stopSession = null; }
   retainPlayers(known: ReadonlySet<string>): void { this.limit.retain(known); }
   onMessage(player: SessionPlayer, message: ControlMessage): void {
+    if (message.type === 'turn-add') {
+      if (!this.limit.allow(player.playerId, Date.now())) return;
+      const slot = this.options.projection.slotOf(player.playerId);
+      if (slot?.lastSent && slot.sceneId === message.sceneId) this.options.tokens.addTurn?.(slot.tab.viewId, message.name, message.value);
+      return;
+    }
     if (message.type !== 'token-edit' || !this.limit.allow(player.playerId, Date.now())) return;
     const { projection, control, tokens, session } = this.options;
     const slot = projection.slotOf(player.playerId);

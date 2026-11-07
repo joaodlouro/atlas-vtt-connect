@@ -4,6 +4,7 @@ import { isTokenEdit, type TokenEdit } from './control/tokenEdits';
  * imports nothing but the scene wire format beside it: no Obsidian, no PIXI, no PeerJS.
  */
 import type { SceneCamera } from './scene/sceneCamera';
+import { isTurnName, isTurnValue } from './control/manualTurns';
 import type { DiceSelection } from '@atlas-vtt/shared/rules';
 import type { PlayerDrawing, PlayerFogOp, PlayerSceneBody, ScenePatchBody, ScenePoint } from './scene/sceneTypes';
 import {
@@ -100,6 +101,7 @@ export type ControlMessage =
   | SceneStateMessage
   | SceneLookMessage
   /** GM to one player: the tokens that player may move, for this session. */
+  | { v: 1; type: 'turn-add'; sceneId: string; name: string; value: number }
   | { v: 1; type: 'token-control'; tokenIds: string[] }
   /** Player to GM, once per drop: where the player let go of one of their tokens, in world units. */
   | { v: 1; type: 'token-move'; sceneId: string; tokenId: string; x: number; y: number }
@@ -144,7 +146,7 @@ export type ControlMessage =
 
 /** What an admitted player may send besides `ping`, `pong` and `bye`; the GM drops every other type from a player. */
 export const PLAYER_MESSAGE_TYPES: ReadonlySet<ControlMessage['type']> = new Set<ControlMessage['type']>([
-  'scene-resync', 'token-move', 'token-copy', 'token-edit', 'dice-roll', 'dice-result', 'laser', 'sheet-roll', 'map-ping', 'map-template', 'note-request', 'board-request',
+  'turn-add', 'scene-resync', 'token-move', 'token-copy', 'token-edit', 'dice-roll', 'dice-result', 'laser', 'sheet-roll', 'map-ping', 'map-template', 'note-request', 'board-request',
 ]);
 
 export type Decoded =
@@ -193,6 +195,7 @@ const VALIDATORS: Record<ControlMessage['type'], (m: Fields) => boolean> = {
   'scene-camera': (m) => isSceneCamera(m),
   'scene-state': (m) => isSceneState(m),
   'scene-look': (m) => isSceneLook(m),
+  'turn-add': (m) => isSceneId(m.sceneId) && isTurnName(m.name) && isTurnValue(m.value),
   'token-control': (m) => Array.isArray(m.tokenIds) && m.tokenIds.length <= MAX_CONTROLLED_TOKENS
     && m.tokenIds.every((id) => isSceneId(id)),
   // Any number: one JSON reads as Infinity (`1e400`) is the GM's check to refuse, not a broken message.

@@ -67,7 +67,7 @@ function showTokenTab(selected: boolean): void {
 element('general-tab').addEventListener('click', () => showTokenTab(false));
 element('token-tab').addEventListener('click', () => showTokenTab(true));
 let controlledTokens: readonly string[] = [];
-const turns = new TurnOrderView(element('turn-order'), element('turn-order-button'), (id, initiative) => session?.sendTokenEdit(id, { initiative }) ?? false);
+const turns = new TurnOrderView(element('turn-order'), element('turn-order-button'), (name, value) => session?.sendTurn(name, value) ?? false);
 function updateTokenChoices(): void {
   const list = element('owned-tokens'); list.replaceChildren();
   for (const id of controlledTokens) {

@@ -97,3 +97,13 @@ it('validates initiative bounds and writes into the shared native tracker', () =
   expect(updateInitiativeEntry).toHaveBeenCalledWith('entry', {initiative: 12});
   expect(addToInitiative).toHaveBeenCalledOnce();
 });
+
+it('adds arbitrary named turns without a token, bounds input and opens the shared tracker', () => {
+  const addToInitiative=vi.fn(()=>'turn');const updateInitiativeEntry=vi.fn();const setInitiativeTrackerOpen=vi.fn();
+  const state={mapLoaded:true,isMapLoading:false,lighting:{enabled:false},objects:{tokens:{}},initiative:{entries:[]},addToInitiative,updateInitiativeEntry,setInitiativeTrackerOpen};
+  const api=stockTokensApi({view:()=>({viewId:'view',atlasStore:{getState:()=>state}}) as unknown as TokenView,mapSize:()=>({width:100,height:100}),dynamicLighting:()=>false});
+  expect(api.addTurn?.('view','  Goblin livre  ',19)).toBe(true);
+  expect(addToInitiative).toHaveBeenCalledWith(expect.objectContaining({name:'Goblin livre',tokenId:expect.stringMatching(/^rpg-turn-/)}));
+  expect(updateInitiativeEntry).toHaveBeenCalledWith('turn',{initiative:19});expect(setInitiativeTrackerOpen).toHaveBeenCalledWith(true);
+  expect(api.addTurn?.('view','',19)).toBe(false);expect(api.addTurn?.('view','Goblin',NaN)).toBe(false);
+});
